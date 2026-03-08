@@ -8,6 +8,15 @@ export default function CreateBoardScreen({ navigation }: any) {
   const [eventName, setEventName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function generateJoinCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
   async function handleCreateBoard() {
     if (!campaignName.trim() || !eventName.trim()) {
       return Alert.alert('Missing Info', 'Please fill out both fields.');

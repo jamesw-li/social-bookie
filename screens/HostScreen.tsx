@@ -171,6 +171,33 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
+  async function handleDeleteBet(betId: string) {
+    Alert.alert(
+      'Trash & Refund Bet?',
+      'This will permanently delete the bet and refund any points wagered back to the players.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete & Refund', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              // Call our new Supabase function to handle the refund math AND the deletion
+              const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
+
+              if (error) throw error;
+              
+              Alert.alert('Deleted', 'Bet removed and points refunded.');
+              fetchHostData(); // Refresh the board
+            } catch (error: any) {
+              Alert.alert('Error', error.message);
+            }
+          }
+        }
+      ]
+    );
+  }
+
   async function handleReverseGrading(betId: string) {
     Alert.alert('Reverse Grading?', 'This will claw back all payouts and set the bet back to Locked.', [
       { text: 'Cancel', style: 'cancel' },
@@ -319,7 +346,7 @@ export default function HostScreen({ navigation }: any) {
             </View>
             
             {/* Buttons */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
               
               {item.status === 'open' && (
                 <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBetStatus(item.id, 'locked')}>
@@ -333,16 +360,24 @@ export default function HostScreen({ navigation }: any) {
                     <Text style={styles.actionBtnTextSecondary}>🔓 Re-Open</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.actionBtn} onPress={() => openGradeModal(item)}>
-                    <Text style={styles.actionBtnText}>✅ Grade Bet</Text>
+                    <Text style={styles.actionBtnText}>✅ Grade</Text>
                   </TouchableOpacity>
                 </>
               )}
 
               {item.status === 'graded' && (
                 <TouchableOpacity style={styles.actionBtnDanger} onPress={() => handleReverseGrading(item.id)}>
-                  <Text style={styles.actionBtnTextDanger}>↩️ Reverse Grading</Text>
+                  <Text style={styles.actionBtnTextDanger}>↩️ Reverse</Text>
                 </TouchableOpacity>
               )}
+
+              {/* NEW TRASH BUTTON */}
+              <TouchableOpacity 
+                style={[styles.actionBtnSecondary, { borderColor: '#ff4444' }]} 
+                onPress={() => handleDeleteBet(item.id)}
+              >
+                <Text style={[styles.actionBtnTextSecondary, { color: '#ff4444' }]}>🗑️ Trash</Text>
+              </TouchableOpacity>
 
             </View>
           </View>

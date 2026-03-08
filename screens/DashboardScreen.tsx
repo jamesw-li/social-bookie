@@ -30,6 +30,10 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [myBetsModalVisible, setMyBetsModalVisible] = useState(false);
   const [myBets, setMyBets] = useState<any[]>([]);
 
+  // NEW: State for Tabs and Standings Data
+  const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
+  const [standings, setStandings] = useState<any[]>([]);
+
   useEffect(() => {
     let walletSub: any;
     let betsSub: any;
@@ -167,6 +171,15 @@ export default function DashboardScreen({ route, navigation }: any) {
         // Feed the new My Bets Modal
         setMyBets(eventWagers.reverse());
       }
+      
+      // 5. Fetch Standings for the Leaderboard Tab
+      const { data: standingsData } = await supabase
+        .from('campaign_participants')
+        .select('user_id, global_point_balance, users(display_name)')
+        .eq('campaign_id', storedCampaignId)
+        .order('global_point_balance', { ascending: false }); // Highest points at the top!
+
+      if (standingsData) setStandings(standingsData);
 
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -176,23 +189,47 @@ export default function DashboardScreen({ route, navigation }: any) {
   }
 
 function openBetSlip(bet: any, option?: any) {
+    const cleanBetId = String(bet.id).toLowerCase().trim();
+    const existingWager = myWagers.find((w: any) => 
+      String(w.bet_id).toLowerCase().trim() === cleanBetId
+    );
+
+    // 1. Check if the bet is locked FIRST to prevent refunds on locked action
     if (bet.status === 'locked') {
-      return Alert.alert('Board Locked 🔒', 'The host has locked betting for this action.');
+      const lockMsg = 'The host has locked betting for this action. No more changes allowed.';
+      if (Platform.OS === 'web') {
+        return window.alert(`Board Locked 🔒\n${lockMsg}`);
+      }
+      return Alert.alert('Board Locked 🔒', lockMsg);
     }
 
-    // Check if they already wagered on this bet
-    const existingWager = myWagers.find((w: any) => w.bet_id === bet.id);
-    
+    // 2. Only allow refund if the bet is NOT locked
     if (existingWager) {
+      if (Platform.OS === 'web') {
+        const confirmRefund = window.confirm(
+          'You already have action on this bet. Want to cancel your ticket, refund your points, and pick again?'
+        );
+        if (confirmRefund) {
+          (async () => {
+            try {
+              await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
+              window.alert('Refunded! Your points have been returned.');
+            } catch (error: any) {
+              window.alert(`Error: ${error.message}`);
+            }
+          })();
+        }
+        return;
+      }
+
       Alert.alert(
         'Bet Already Placed', 
-        'You already have action on this bet. Want to cancel your ticket, refund your points, and pick again?', 
+        'Want to cancel your ticket, refund your points, and pick again?', 
         [
           { text: 'Keep Ticket', style: 'cancel' },
           { text: 'Refund & Edit', style: 'destructive', onPress: async () => {
               try {
                 await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
-                Alert.alert('Refunded!', 'Your points have been returned. You can now place a new bet.');
               } catch (error: any) {
                 Alert.alert('Error', error.message);
               }
@@ -203,10 +240,10 @@ function openBetSlip(bet: any, option?: any) {
       return;
     }
 
-    // If no existing wager, open the slip normally
+    // 3. Open normal slip for new bets
     setSelectedBet(bet);
     setWagerAmount('');
-    setSelectedOption(option || null); // <-- We pass the option they tapped right into your state!
+    setSelectedOption(option || null);
     setModalVisible(true);
   }
 
@@ -296,30 +333,76 @@ function openBetSlip(bet: any, option?: any) {
 
   const potentialWin = wagerAmount ? Math.floor(parseInt(wagerAmount) * (selectedOption?.multiplier || 1)) : 0;
 
-  const renderBetCard = ({ item }: { item: any }) => {
-    // Check if the user already bet on this specific question
-    const existingWager = myWagers.find(w => w.bet_id === item.id);
+ const renderBetCard = ({ item }: { item: any }) => {
+    const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
+    const isOpen = item.status === 'open';
+    const isLocked = item.status === 'locked';
 
     return (
-      <View style={styles.betCard}>
-        <Text style={styles.betQuestion}>{item.question}</Text>
-        
-        {existingWager ? (
-          // IF THEY ALREADY BET: Show a receipt instead of buttons
-          <View style={styles.lockedWagerCard}>
-            <Text style={styles.lockedText}>🔒 Action Locked</Text>
-            <Text style={styles.lockedDetails}>
-              {existingWager.points_risked} pts on <Text style={{color: '#fff'}}>{existingWager.bet_options.label}</Text>
+      <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text style={styles.betQuestion}>{item.question}</Text>
+          <View style={[
+            styles.statusBadge, 
+            isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' }
+          ]}>
+            <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}>
+              {isOpen ? '🟢 OPEN' : '🔒 LOCKED'}
             </Text>
           </View>
+        </View>
+        
+        {existingWager ? (
+          <TouchableOpacity 
+            style={[styles.lockedWagerCard, isLocked && { borderColor: '#666' }]} 
+            onPress={() => openBetSlip(item)}
+            disabled={isLocked} // Visual feedback: can't tap if locked
+          >
+            {/* Top Row: Status and Edit Prompt */}
+            <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={styles.lockedText}>
+                {isLocked ? '🔒 Ticket Locked' : '✅ Ticket Placed'}
+              </Text>
+              {isOpen && (
+                <Text style={{color: '#00D084', fontSize: 12, fontStyle: 'italic'}}>
+                  Tap to Edit
+                </Text>
+              )}
+            </View>
+            
+            {/* Bottom Row: 2-Column Data Layout */}
+            <View style={{ marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+              
+              {/* Left Column: Pick & Odds */}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lockedDetails}>
+                  Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.bet_options.label}</Text>
+                </Text>
+                <Text style={styles.lockedDetails}>
+                  Odds: <Text style={{color: '#00D084', fontWeight: 'bold'}}>{existingWager.bet_options.multiplier}x</Text>
+                </Text>
+              </View>
+
+              {/* Right Column: Wager & Potential Win */}
+              <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                <Text style={styles.lockedDetails}>
+                  Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.points_risked} pts</Text>
+                </Text>
+                <Text style={[styles.lockedDetails, { color: '#00D084', fontWeight: 'bold' }]}>
+                  Win: {Math.floor(existingWager.points_risked * existingWager.bet_options.multiplier)} pts
+                </Text>
+              </View>
+
+            </View>
+          </TouchableOpacity>
         ) : (
-          // IF THEY HAVEN'T BET: Show the normal buttons
           <View style={styles.optionsRow}>
             {item.bet_options.map((option: any) => (
               <TouchableOpacity 
                 key={option.id} 
-                style={styles.optionButton}
+                style={[styles.optionButton, isLocked && { opacity: 0.5 }]}
                 onPress={() => openBetSlip(item, option)}
+                disabled={isLocked}
               >
                 <Text style={styles.optionLabel}>{option.label}</Text>
                 <Text style={styles.optionOdds}>{option.multiplier}x</Text>
@@ -348,10 +431,6 @@ function openBetSlip(bet: any, option?: any) {
             <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}>
               <Text style={styles.navPillMyBetsText}>🧾 My Bets</Text>
             </TouchableOpacity>
-          
-            <TouchableOpacity style={styles.navPillStandings} onPress={() => navigation.navigate('Leaderboard')}>
-              <Text style={styles.navPillStandingsText}>🏆 Standings</Text>
-            </TouchableOpacity>
             
             {userRole === 'host' && (
               <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
@@ -362,27 +441,93 @@ function openBetSlip(bet: any, option?: any) {
         </View>
 
         {/* Main Action Header (Mirrors Host View) */}
-        <View style={styles.mainHeaderRow}>
-          <View style={{ flex: 1, paddingRight: 10 }}>
-            <Text style={styles.title}>The Action</Text>
-            <Text style={styles.subtitle}>{activeEvent ? `Live: ${activeEvent.name}` : 'Waiting for host...'}</Text>
-            <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
+        {/* --- DYNAMIC HEADER --- */}
+        {activeTab === 'action' ? (
+          <View style={styles.mainHeaderRow}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.title}>The Action</Text>
+              <Text style={styles.subtitle}>{activeEvent ? `Live: ${activeEvent.name}` : 'Waiting for host...'}</Text>
+              <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
+            </View>
+            
+            <TouchableOpacity style={styles.pitchButton} onPress={() => setSuggestModalVisible(true)}>
+              <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
+            </TouchableOpacity>
           </View>
-          
-          <TouchableOpacity style={styles.pitchButton} onPress={() => setSuggestModalVisible(true)}>
-            <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
-          </TouchableOpacity>
-        </View>
+        ) : (
+          <View style={styles.mainHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Standings</Text>
+              <Text style={styles.subtitle}>Current Leaderboard</Text>
+              <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
+            </View>
+          </View>
+        )}
 
       </View>
-      
-      <FlatList
-        data={bets}
-        keyExtractor={(item) => item.id}
-        renderItem={renderBetCard}
-        contentContainerStyle={{ paddingBottom: 50 }}
-      />
 
+      {/* --- DYNAMIC MAIN CONTENT (STRICT EITHER / OR) --- */}
+      {activeTab === 'action' ? (
+        <FlatList
+          style={{ flex: 1 }}
+          data={bets}
+          keyExtractor={(item) => item.id}
+          renderItem={renderBetCard}
+          contentContainerStyle={{ paddingBottom: 50 }}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <FlatList
+          style={{ flex: 1 }}
+          data={standings}
+          keyExtractor={(item) => item.user_id}
+          contentContainerStyle={{ paddingBottom: 50 }}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item, index }) => {
+            let rankColor = '#00D084'; 
+            if (index === 0) rankColor = '#FFD700'; 
+            else if (index === 1) rankColor = '#C0C0C0'; 
+            else if (index === 2) rankColor = '#CD7F32'; 
+
+            return (
+              <View style={[styles.standingsCard, index === 0 && { borderColor: '#FFD700', borderWidth: 2 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[styles.standingsRank, { color: rankColor }]}>#{index + 1}</Text>
+                  <Text style={styles.standingsName}>
+                    {item.users?.display_name || 'Unknown Player'}
+                    <Text style={{ color: '#a0a0a0', fontWeight: 'normal', fontSize: 14 }}>
+                      {item.user_id === userId ? ' (You)' : ''}
+                    </Text>
+                  </Text>
+                </View>
+                <Text style={[styles.standingsScore, { color: rankColor }]}>
+                  {item.global_point_balance.toLocaleString()} pts
+                </Text>
+              </View>
+            );
+          }}
+        />
+      )}
+      {/* --- BOTTOM NAVIGATION BAR --- */}
+      <View style={styles.bottomNavBar}>
+        {/* The Action Tab */}
+        <TouchableOpacity 
+          style={activeTab === 'action' ? styles.bottomNavBtnActive : styles.bottomNavBtn}
+          onPress={() => setActiveTab('action')}
+        >
+          <Text style={{ fontSize: 20 }}>🎲</Text>
+          <Text style={activeTab === 'action' ? styles.bottomNavTextActive : styles.bottomNavText}>The Action</Text>
+        </TouchableOpacity>
+        
+        {/* Standings Tab */}
+        <TouchableOpacity 
+          style={activeTab === 'standings' ? styles.bottomNavBtnActive : styles.bottomNavBtn} 
+          onPress={() => setActiveTab('standings')}
+        >
+          <Text style={{ fontSize: 20 }}>🏆</Text>
+          <Text style={activeTab === 'standings' ? styles.bottomNavTextActive : styles.bottomNavText}>Standings</Text>
+        </TouchableOpacity>
+      </View>
       {/* Bet Slip Modal remains unchanged */}
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
@@ -458,28 +603,61 @@ function openBetSlip(bet: any, option?: any) {
               keyExtractor={(item) => item.id.toString()}
               ListEmptyComponent={<Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No bets placed yet. Get in the action!</Text>}
               renderItem={({ item }) => {
-                const isLocked = item.status === 'locked';
-                
+                // Map the nested wager data correctly from Supabase
+                const wagerStatus = item.status || 'pending'; 
+                const question = item.bets?.question || 'Unknown Bet';
+                const pick = item.bet_options?.label || 'Unknown Pick';
+                const odds = item.bet_options?.multiplier || 1;
+                const wagerAmount = item.points_risked || 0;
+                const potentialWin = Math.floor(wagerAmount * odds);
+
+                // Dynamic coloring based on ticket status
+                let statusText = '🟡 PENDING';
+                let statusColor = '#FFD700';
+                let statusBg = 'rgba(255, 215, 0, 0.2)';
+
+                if (wagerStatus === 'won') {
+                  statusText = '🟢 WON';
+                  statusColor = '#00D084';
+                  statusBg = 'rgba(0, 208, 132, 0.2)';
+                } else if (wagerStatus === 'lost') {
+                  statusText = '🔴 LOST';
+                  statusColor = '#ff4444';
+                  statusBg = 'rgba(255, 68, 68, 0.2)';
+                }
+
                 return (
-                  <TouchableOpacity 
-                    style={[styles.betCard, isLocked && { borderColor: '#ff4444', opacity: 0.8 }]} 
-                    onPress={() => openBetSlip(item)}
-                    activeOpacity={isLocked ? 1 : 0.7} // Prevents click animation if locked
-                  >
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-                      <Text style={[styles.betQuestion, { flex: 1, paddingRight: 10 }]}>{item.question}</Text>
-                      {isLocked && (
-                        <View style={{ backgroundColor: 'rgba(255, 68, 68, 0.2)', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#ff4444' }}>
-                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 10 }}>🔒 LOCKED</Text>
-                        </View>
-                      )}
+                  <View style={[styles.receiptCard, { borderColor: statusColor, opacity: wagerStatus === 'pending' ? 1 : 0.6 }]}>
+                    
+                    {/* Header: Question & Status Badge */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                      <Text style={[styles.receiptQuestion, { flex: 1, paddingRight: 10 }]}>{question}</Text>
+                      <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor, borderWidth: 1 }]}>
+                        <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
+                      </View>
                     </View>
-                    {/* ... the rest of your options render code ... */}
-                  </TouchableOpacity>
+
+                    {/* Body: Pick Data & Math */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.receiptAmount}>Pick: <Text style={styles.receiptPick}>{pick}</Text></Text>
+                        <Text style={styles.receiptAmount}>Odds: <Text style={styles.receiptOdds}>{odds}x</Text></Text>
+                      </View>
+                      
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.receiptAmount}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{wagerAmount} pts</Text></Text>
+                        <Text style={[
+                          wagerStatus === 'won' ? styles.receiptWon : (wagerStatus === 'lost' ? styles.receiptLost : styles.receiptToWin),
+                          { marginTop: 4 }
+                        ]}>
+                          {wagerStatus === 'won' ? `Payout: ${potentialWin} pts` : `Win: ${potentialWin} pts`}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 );
               }}
             />
-
             <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 10 }} onPress={() => setMyBetsModalVisible(false)}>
               <Text style={styles.closeSlipText}>Close</Text>
             </TouchableOpacity>
@@ -587,7 +765,6 @@ const styles = StyleSheet.create({
   receiptDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   receiptPick: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
   receiptAmount: { color: '#a0a0a0', fontSize: 14 },
-  statusBadge: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
   badgeWon: { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderWidth: 1, borderColor: '#00D084' },
   badgeLost: { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderWidth: 1, borderColor: '#ff4444' },
   badgePending: { backgroundColor: 'rgba(255, 215, 0, 0.2)', borderWidth: 1, borderColor: '#FFD700' },
@@ -596,4 +773,67 @@ const styles = StyleSheet.create({
   receiptToWin: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
   receiptWon: { color: '#00D084', fontSize: 14, fontWeight: 'bold' },
   receiptLost: { color: '#ff4444', fontSize: 14, fontWeight: 'bold' },
+  //statusBadge: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    height: 22,
+    justifyContent: 'center'
+  },
+  // --- BOTTOM NAV STYLES ---
+  // --- BOTTOM NAV STYLES ---
+  bottomNavBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1e1e1e',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    // These negative margins counteract the container's padding to hit the edges
+    marginHorizontal: -15,
+    marginBottom: -15,
+    // Adds safe area padding for modern iPhones with the swipe-up bar
+    paddingBottom: Platform.OS === 'ios' ? 25 : 0, 
+  },
+  bottomNavBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15,
+  },
+  bottomNavBtnActive: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15,
+    backgroundColor: 'rgba(0, 208, 132, 0.05)',
+    // Moved the active indicator line to the top of the tab
+    borderTopWidth: 3, 
+    borderTopColor: '#00D084',
+    marginTop: -1, // Snaps the green line perfectly over the gray border
+  },
+  bottomNavText: {
+    color: '#a0a0a0',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
+  bottomNavTextActive: {
+    color: '#00D084',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginTop: 4,
+  },
+  // --- STANDINGS STYLES ---
+  standingsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1e1e1e',
+    padding: 18,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#333'
+  },
+  standingsRank: { color: '#00D084', fontSize: 18, fontWeight: 'bold', marginRight: 15 },
+  standingsName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  standingsScore: { color: '#FFD700', fontSize: 18, fontWeight: 'bold' },
 });

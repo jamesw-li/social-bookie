@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView } from 'react-native';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 export default function CampaignScreen({ route, navigation }: any) {
   const { userId, userName } = route.params; // Catch the data passed from WelcomeScreen
@@ -91,41 +92,59 @@ export default function CampaignScreen({ route, navigation }: any) {
   }
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Join an Event</Text>
       
-      {/* NEW: Host Button */}
-      <TouchableOpacity 
-        style={styles.createButton} 
-        onPress={() => navigation.navigate('CreateBoard')}
-      >
-        <Text style={styles.createButtonText}>+ Host a New Game</Text>
-      </TouchableOpacity>
+      {/* --- STATIC HEADER --- */}
+      <View>
+        <Text style={styles.title}>Join an Event</Text>
+        <TouchableOpacity 
+          style={styles.createButton} 
+          onPress={() => navigation.navigate('CreateBoard')}
+        >
+          <Text style={styles.createButtonText}>+ Host a New Game</Text>
+        </TouchableOpacity>
+        <Text style={styles.subtitle}>Or join an active board below:</Text>
+      </View>
 
-      <Text style={styles.subtitle}>Or join an active board below:</Text>
-
+      {/* --- SCROLLABLE ZONE 1: LIVE ACTION --- */}
       <Text style={styles.sectionTitle}>Live Action</Text>
-      {activeCampaigns.length === 0 ? (
-        <Text style={styles.emptyText}>No active events right now.</Text>
-      ) : (
-        activeCampaigns.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.campaignCard} onPress={() => selectCampaign(item)}>
-            <Text style={styles.campaignName}>{item.name}</Text>
-            <Text style={{ color: '#00D084', fontWeight: 'bold' }}>🟢 LIVE</Text>
-          </TouchableOpacity>
-        ))
-      )}
+      <View style={{ flex: 1, marginBottom: 20 }}>
+        {activeCampaigns.length === 0 ? (
+          <Text style={styles.emptyText}>No active events right now.</Text>
+        ) : (
+          <FlatList
+            data={activeCampaigns}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.campaignCard} onPress={() => selectCampaign(item)}>
+                <Text style={styles.campaignName}>{item.name}</Text>
+                <Text style={{ color: '#00D084', fontWeight: 'bold' }}>🟢 LIVE</Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </View>
 
-      <Text style={[styles.sectionTitle, { marginTop: 30 }]}>Hall of Fame</Text>
-      {closedCampaigns.length === 0 ? (
-        <Text style={styles.emptyText}>No archived events yet.</Text>
-      ) : (
-        closedCampaigns.map((item) => (
-          <TouchableOpacity key={item.id} style={[styles.campaignCard, { borderColor: '#444' }]} onPress={() => selectCampaign(item)}>
-            <Text style={[styles.campaignName, { color: '#a0a0a0' }]}>{item.name}</Text>
-            <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>🛑 CLOSED</Text>
-          </TouchableOpacity>
-        ))
-      )}
+      {/* --- SCROLLABLE ZONE 2: HALL OF FAME --- */}
+      <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Hall of Fame</Text>
+      <View style={{ flex: 1 }}>
+        {closedCampaigns.length === 0 ? (
+          <Text style={styles.emptyText}>No archived events yet.</Text>
+        ) : (
+          <FlatList
+            data={closedCampaigns}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={[styles.campaignCard, { borderColor: '#444' }]} onPress={() => selectCampaign(item)}>
+                <Text style={[styles.campaignName, { color: '#a0a0a0' }]}>{item.name}</Text>
+                <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>🛑 CLOSED</Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </View>
+
     </View>
   );
 }
