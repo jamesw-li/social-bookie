@@ -3,8 +3,6 @@ import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, 
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-
-
 export default function CampaignScreen({ route, navigation }: any) {
   const { userId, userName } = route.params; // Catch the data passed from WelcomeScreen
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -160,8 +158,10 @@ export default function CampaignScreen({ route, navigation }: any) {
     <View style={styles.container}>
       
       {/* --- STATIC HEADER --- */}
-      <View>
-        <Text style={styles.title}>Join an Event</Text>
+      <View style={styles.header}>
+        {/* NEW: Welcome text pulling the name from route.params */}
+        <Text style={styles.welcomeText}>Welcome, {userName || 'Player'}!</Text>
+        <Text style={styles.title}>Your Campaigns</Text>
         
         {/* NEW: Join via Code Box */}
         <View style={styles.joinBox}>
@@ -238,7 +238,9 @@ export default function CampaignScreen({ route, navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 20 },
+  header: { marginBottom: 15 },
+  welcomeText: { fontSize: 18, color: '#00D084', fontWeight: 'bold', marginBottom: 5 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 10 },
   card: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   cardText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
   createButton: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginBottom: 25 },
@@ -261,8 +263,8 @@ const styles = StyleSheet.create({
   // --- JOIN BOX STYLES ---
   joinBox: {
     flexDirection: 'row',
-    marginTop: 15,
-    marginBottom: 20,
+    marginTop: 5,
+    marginBottom: 25,
     gap: 10,
   },
   joinInput: {
