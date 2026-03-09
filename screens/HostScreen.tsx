@@ -296,43 +296,59 @@ export default function HostScreen({ navigation }: any) {
 
   async function handleDeleteBet(betId: string) {
     const targetBet = bets.find(b => b.id === betId);
+    const title = 'Trash & Refund Bet?';
+    const msg = 'Permanently delete and refund points?';
 
-    Alert.alert('Trash & Refund Bet?', 'Permanently delete and refund points?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete & Refund', style: 'destructive', onPress: async () => {
-            try {
-              if (targetBet?.isP2P) {
-                const { error } = await supabase.rpc('delete_p2p_bet_and_refund', { p_bet_id: betId });
-                if (error) throw error;
-              } else if (targetBet?.isBlind) {
-                // NEW: Call the secure refund RPC for Blind Bets!
-                const { error } = await supabase.rpc('delete_blind_match_and_refund', { p_matchup_id: betId });
-                if (error) throw error;
-              } else {
-                const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
-                if (error) throw error;
-              }
-              fetchHostData(); 
-            } catch (error: any) { Alert.alert('Error', error.message); }
-          }
+    const executeDelete = async () => {
+      try {
+        if (targetBet?.isP2P) {
+          const { error } = await supabase.rpc('delete_p2p_bet_and_refund', { p_bet_id: betId });
+          if (error) throw error;
+        } else if (targetBet?.isBlind) {
+          const { error } = await supabase.rpc('delete_blind_match_and_refund', { p_matchup_id: betId });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
+          if (error) throw error;
         }
-      ]
-    );
+        fetchHostData(); 
+      } catch (error: any) { 
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) executeDelete();
+    } else {
+      Alert.alert(title, msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete & Refund', style: 'destructive', onPress: executeDelete }
+      ]);
+    }
   }
 
   async function handleReverseGrading(betId: string) {
-    Alert.alert('Reverse Grading?', 'Claw back payouts and unlock bet.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reverse', style: 'destructive', onPress: async () => {
-          try {
-            await supabase.rpc('undo_resolve_bet', { target_bet_id: betId });
-            fetchHostData();
-          } catch (error: any) { Alert.alert('Error', error.message); }
-        }
+    const title = 'Reverse Grading?';
+    const msg = 'Claw back payouts and unlock bet.';
+
+    const executeReverse = async () => {
+      try {
+        await supabase.rpc('undo_resolve_bet', { target_bet_id: betId });
+        fetchHostData();
+      } catch (error: any) { 
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
       }
-    ]);
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) executeReverse();
+    } else {
+      Alert.alert(title, msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reverse', style: 'destructive', onPress: executeReverse }
+      ]);
+    }
   }
-  
   async function handleGradeBet(winningOptionId: string) {
     setIsGrading(true);
     try {
@@ -372,44 +388,61 @@ export default function HostScreen({ navigation }: any) {
   }
 
   // --- MANAGE CREW LOGIC ---
+  // --- MANAGE CREW LOGIC ---
   async function handleElevateHost(targetUserId: string, targetName: string) {
-    Alert.alert('Elevate to Co-Host?', `Make ${targetName} a Co-Host?`, [
+    const title = 'Elevate to Co-Host?';
+    const msg = `Make ${targetName} a Co-Host?`;
+
+    const executeElevate = async () => {
+      try {
+        const { error } = await supabase.rpc('update_participant_role', { 
+          p_campaign_id: activeCampaignId, 
+          p_target_user_id: targetUserId, 
+          p_new_role: 'host' 
+        });
+        if (error) throw error;
+        fetchHostData();
+      } catch (error: any) { 
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) executeElevate();
+    } else {
+      Alert.alert(title, msg, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Make Host', style: 'destructive', onPress: async () => {
-            try {
-              // NEW: Use the secure RPC
-              const { error } = await supabase.rpc('update_participant_role', { 
-                p_campaign_id: activeCampaignId, 
-                p_target_user_id: targetUserId, 
-                p_new_role: 'host' 
-              });
-              if (error) throw error;
-              fetchHostData();
-            } catch (error: any) { Alert.alert('Error', error.message); }
-          }
-        }
-      ]
-    );
+        { text: 'Make Host', style: 'destructive', onPress: executeElevate }
+      ]);
+    }
   }
 
   async function handleRevokeHost(targetUserId: string, targetName: string) {
-    Alert.alert('Revoke Co-Host?', `Remove ${targetName}'s host powers?`, [
+    const title = 'Revoke Co-Host?';
+    const msg = `Remove ${targetName}'s host powers?`;
+
+    const executeRevoke = async () => {
+      try {
+        const { error } = await supabase.rpc('update_participant_role', { 
+          p_campaign_id: activeCampaignId, 
+          p_target_user_id: targetUserId, 
+          p_new_role: 'guest' 
+        });
+        if (error) throw error;
+        fetchHostData();
+      } catch (error: any) { 
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) executeRevoke();
+    } else {
+      Alert.alert(title, msg, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Revoke', style: 'destructive', onPress: async () => {
-            try {
-              // NEW: Use the secure RPC
-              const { error } = await supabase.rpc('update_participant_role', { 
-                p_campaign_id: activeCampaignId, 
-                p_target_user_id: targetUserId, 
-                p_new_role: 'guest' 
-              });
-              if (error) throw error;
-              fetchHostData();
-            } catch (error: any) { Alert.alert('Error', error.message); }
-          }
-        }
-      ]
-    );
+        { text: 'Revoke', style: 'destructive', onPress: executeRevoke }
+      ]);
+    }
   }
 
   async function handleCloseBoard() {
