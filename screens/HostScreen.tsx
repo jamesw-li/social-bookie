@@ -305,9 +305,8 @@ export default function HostScreen({ navigation }: any) {
                 const { error } = await supabase.rpc('delete_p2p_bet_and_refund', { p_bet_id: betId });
                 if (error) throw error;
               } else if (targetBet?.isBlind) {
-                // If the blind match hasn't been matched yet, there's no money locked in escrow, so we can just delete. 
-                // If it IS matched, we'd need a refund RPC (We will handle this later, simple delete for now)
-                const { error } = await supabase.from('blind_matchups').delete().eq('id', betId);
+                // NEW: Call the secure refund RPC for Blind Bets!
+                const { error } = await supabase.rpc('delete_blind_match_and_refund', { p_matchup_id: betId });
                 if (error) throw error;
               } else {
                 const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
@@ -378,7 +377,12 @@ export default function HostScreen({ navigation }: any) {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Make Host', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase.from('campaign_participants').update({ role: 'host' }).eq('user_id', targetUserId).eq('campaign_id', activeCampaignId);
+              // NEW: Use the secure RPC
+              const { error } = await supabase.rpc('update_participant_role', { 
+                p_campaign_id: activeCampaignId, 
+                p_target_user_id: targetUserId, 
+                p_new_role: 'host' 
+              });
               if (error) throw error;
               fetchHostData();
             } catch (error: any) { Alert.alert('Error', error.message); }
@@ -393,7 +397,12 @@ export default function HostScreen({ navigation }: any) {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Revoke', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase.from('campaign_participants').update({ role: 'guest' }).eq('user_id', targetUserId).eq('campaign_id', activeCampaignId);
+              // NEW: Use the secure RPC
+              const { error } = await supabase.rpc('update_participant_role', { 
+                p_campaign_id: activeCampaignId, 
+                p_target_user_id: targetUserId, 
+                p_new_role: 'guest' 
+              });
               if (error) throw error;
               fetchHostData();
             } catch (error: any) { Alert.alert('Error', error.message); }
@@ -649,50 +658,50 @@ export default function HostScreen({ navigation }: any) {
                   </View>
 
                   <View style={[styles.mathBox, { borderColor: '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)' }]}>
-  <Text style={{ color: '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
-    How Your Bid Shapes the Market
-  </Text>
-  
-  <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
-    You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
-  </Text>
+                    <Text style={{ color: '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+                      How Your Bid Shapes the Market
+                    </Text>
+                    
+                    <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
+                      You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+                    </Text>
 
-  {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
-  <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
-    <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
-      Scenario A: You secure {p2pOptionA || 'Team A'}
-    </Text>
-    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-      • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
-    </Text>
-    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-      • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
-    </Text>
-    <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
-      • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
-    </Text>
-  </View>
+                    {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
+                    <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
+                      <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
+                        Scenario A: You secure {p2pOptionA || 'Team A'}
+                      </Text>
+                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                        • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
+                      </Text>
+                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                        • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
+                      </Text>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
+                        • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
+                      </Text>
+                    </View>
 
-  {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
-  <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
-    <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
-      Scenario B: You are pushed to {p2pOptionB || 'Team B'}
-    </Text>
-    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-      • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
-    </Text>
-    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-      • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
-    </Text>
-    <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
-      • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
-    </Text>
-  </View>
+                    {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
+                    <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+                      <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
+                        Scenario B: You are pushed to {p2pOptionB || 'Team B'}
+                      </Text>
+                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                        • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
+                      </Text>
+                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                        • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
+                      </Text>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
+                        • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
+                      </Text>
+                    </View>
 
-  <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
-    *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
-  </Text>
-</View>
+                    <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
+                      *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+                    </Text>
+                  </View>
                 </>
               ) : betType === 'p2p' ? (
                 // --- P2P CHALLENGE UI ---
