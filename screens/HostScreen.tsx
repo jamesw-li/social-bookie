@@ -12,8 +12,8 @@ export default function HostScreen({ navigation }: any) {
   const [bets, setBets] = useState<any[]>([]);
   
   // --- DUAL INBOX STATES ---
-  const [proposals, setProposals] = useState<any[]>([]); // Mode A: Ideas
-  const [pendingPitches, setPendingPitches] = useState<any[]>([]); // Mode B: Challenges
+  const [proposals, setProposals] = useState<any[]>([]); 
+  const [pendingPitches, setPendingPitches] = useState<any[]>([]); 
   
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [participants, setParticipants] = useState<any[]>([]);
@@ -26,11 +26,10 @@ export default function HostScreen({ navigation }: any) {
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  // NEW: Tracks which Guest Idea is currently being converted
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
   
   // Bet Type State
-  const [betType, setBetType] = useState('prop'); // 'prop' or 'over_under'
+  const [betType, setBetType] = useState('prop'); 
   const [newQuestion, setNewQuestion] = useState('');
   const [newOptions, setNewOptions] = useState([
     { id: 1, label: '', odds: '2.0' },
@@ -41,27 +40,28 @@ export default function HostScreen({ navigation }: any) {
   const [p2pOptionB, setP2pOptionB] = useState('No');
   const [p2pWager, setP2pWager] = useState('100');
   const [p2pMultiplier, setP2pMultiplier] = useState('2.0');
+  
+  // --- BLIND MATCH STATES ---
+  const [blindBase, setBlindBase] = useState('100');
+  const [blindMultiplier, setBlindMultiplier] = useState('2.0');
+  const [blindMatchups, setBlindMatchups] = useState<any[]>([]); // NEW: State for blind matches
 
   useEffect(() => {
     fetchHostData();
 
-    // 1. Listen for standard Idea Pitches
-    const proposalSub = supabase
-      .channel('public:guest_proposals')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => {
-        fetchHostData(); 
-      }).subscribe();
+    const proposalSub = supabase.channel('public:guest_proposals')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData()).subscribe();
 
-    // 2. Listen for P2P Challenges
-    const pitchSub = supabase
-      .channel('public:p2p_prop_bets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => {
-        fetchHostData(); 
-      }).subscribe();
+    const pitchSub = supabase.channel('public:p2p_prop_bets')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => fetchHostData()).subscribe();
+
+    const blindSub = supabase.channel('public:blind_matchups_host')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => fetchHostData()).subscribe();
 
     return () => { 
       supabase.removeChannel(proposalSub); 
       supabase.removeChannel(pitchSub);
+      supabase.removeChannel(blindSub);
     };
   }, []);
 
@@ -80,43 +80,30 @@ export default function HostScreen({ navigation }: any) {
       setActiveEventId(eventData.id);
 
       // 1. Participants
-      const { data: pData } = await supabase
-        .from('campaign_participants')
-        .select('user_id, role, users(display_name)')
-        .eq('campaign_id', campaignId);
+      const { data: pData } = await supabase.from('campaign_participants').select('user_id, role, users(display_name)').eq('campaign_id', campaignId);
       setParticipants(pData ?? []);
 
       // 2. Fetch Regular House Bets
-      const { data: betsData } = await supabase
-        .from('bets')
-        .select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`)
-        .eq('event_id', eventData.id)
-        .in('status', ['open', 'locked', 'graded']);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`).eq('event_id', eventData.id).in('status', ['open', 'locked', 'graded']);
 
       // 3. Fetch Approved P2P Bets
-      const { data: approvedP2P } = await supabase
-        .from('p2p_prop_bets')
-        .select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)')
-        .eq('campaign_id', campaignId)
-        .in('status', ['open', 'locked']);
+      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).in('status', ['open', 'locked']);
+
+      // 4. Fetch Blind Matchups (NEW)
+      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).in('status', ['open', 'matched']);
 
       // --- SAFE MERGE ---
       const safeBets = betsData ?? [];
       const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true }));
-      setBets([...safeP2P, ...safeBets]);
+      const safeBlind = (blindData ?? []).map(b => ({ ...b, isBlind: true }));
+      setBets([...safeBlind, ...safeP2P, ...safeBets]);
 
-      // 4. Fetch Inbox 1: Ideas
-      const { data: propsData } = await supabase
-        .from('guest_proposals').select('id, suggestion, users(display_name)')
-        .eq('event_id', eventData.id).eq('status', 'pending');
+      // 5. Fetch Inbox 1: Ideas
+      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').eq('event_id', eventData.id).eq('status', 'pending');
       setProposals(propsData ?? []);
 
-      // 5. Fetch Inbox 2: Challenges
-      const { data: pitchesData } = await supabase
-        .from('p2p_prop_bets')
-        .select(`*, users!p2p_prop_bets_proposer_id_fkey ( display_name )`)
-        .eq('campaign_id', campaignId)
-        .eq('status', 'pending_approval');
+      // 6. Fetch Inbox 2: Challenges
+      const { data: pitchesData } = await supabase.from('p2p_prop_bets').select(`*, users!p2p_prop_bets_proposer_id_fkey ( display_name )`).eq('campaign_id', campaignId).eq('status', 'pending_approval');
       setPendingPitches(pitchesData ?? []);
 
     } catch (error: any) {
@@ -128,9 +115,9 @@ export default function HostScreen({ navigation }: any) {
   }
   
   // --- IDEA ACTIONS (INBOX 1) ---
- function convertProposalToBet(proposal: any) {
+  function convertProposalToBet(proposal: any) {
     setNewQuestion(proposal.suggestion);
-    setActiveProposalId(proposal.id); // <-- Save the ID here
+    setActiveProposalId(proposal.id); 
     setCreateModalVisible(true);
   }
 
@@ -164,6 +151,8 @@ export default function HostScreen({ navigation }: any) {
       setNewOptions([{ id: 1, label: 'Over', odds: '1.9' }, { id: 2, label: 'Under', odds: '1.9' }]);
     } else if (type === 'prop') {
       setNewOptions([{ id: 1, label: '', odds: '2.0' }, { id: 2, label: '', odds: '1.5' }]);
+    } else if (type === 'blind') {
+      setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setBlindBase('100'); setBlindMultiplier('2.0');
     }
   }
 
@@ -177,6 +166,37 @@ export default function HostScreen({ navigation }: any) {
   }
 
   async function handlePublishBet() {
+    // --- BLIND MATCH PUBLISH LOGIC ---
+    if (betType === 'blind') {
+      if (!newQuestion.trim() || !p2pOptionA.trim() || !p2pOptionB.trim()) return Alert.alert('Hold up', 'Fill out all fields.');
+      
+      const baseAmt = parseInt(blindBase);
+      const multiAmt = parseFloat(blindMultiplier);
+      if (isNaN(baseAmt) || baseAmt <= 0) return Alert.alert('Invalid', 'Base Amount must be > 0');
+      if (isNaN(multiAmt) || multiAmt <= 1) return Alert.alert('Invalid', 'Multiplier must be > 1.0x');
+
+      setIsCreating(true);
+      try {
+        const { error } = await supabase.from('blind_matchups').insert([{
+          campaign_id: activeCampaignId,
+          event_id: activeEventId,
+          question: newQuestion,
+          side_a_label: p2pOptionA,
+          side_b_label: p2pOptionB,
+          base_amount: baseAmt,
+          user_1_id: currentUserId,
+          user_1_bid_multiplier: multiAmt,
+          status: 'open'
+        }]);
+
+        if (error) throw error;
+        
+        setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setBlindBase('100'); setBlindMultiplier('2.0');
+        setCreateModalVisible(false);
+        fetchHostData(); 
+      } catch (error: any) { Alert.alert('Error', error.message); } finally { setIsCreating(false); }
+      return;
+    }
     // --- P2P PUBLISH LOGIC ---
     if (betType === 'p2p') {
       if (!newQuestion.trim() || !p2pOptionA.trim() || !p2pOptionB.trim()) return Alert.alert('Hold up', 'Fill out all fields.');
@@ -190,13 +210,13 @@ export default function HostScreen({ navigation }: any) {
       try {
         const { error } = await supabase.from('p2p_prop_bets').insert([{
           campaign_id: activeCampaignId,
-          proposer_id: currentUserId, // Host is the proposer
+          proposer_id: currentUserId,
           question: newQuestion,
           option_a_label: p2pOptionA,
           option_b_label: p2pOptionB,
           wager_amount: wagerAmt,
           multiplier: multiAmt,
-          status: 'open' // Immediately live, no approval needed
+          status: 'open' 
         }]);
 
         if (error) throw error;
@@ -239,9 +259,15 @@ export default function HostScreen({ navigation }: any) {
 
   // --- BET MANAGEMENT ACTIONS ---
   function openGradeModal(bet: any) { 
-    // Prevent grading half-empty P2P bets
     if (bet.isP2P && (!bet.side_a_user_id || !bet.side_b_user_id)) {
       const msg = 'Both sides of this Prop Challenge must be claimed before it can be graded.\n\nYou can Re-Open it to allow claims, or Trash it to refund the lone player.';
+      if (Platform.OS === 'web') return window.alert(`Cannot Grade\n\n${msg}`);
+      return Alert.alert('Cannot Grade', msg);
+    }
+
+    // --- NEW: BLIND MATCH GUARD ---
+    if (bet.isBlind && bet.status === 'open') {
+      const msg = 'You cannot grade a Blind Match until a challenger accepts the bid.';
       if (Platform.OS === 'web') return window.alert(`Cannot Grade\n\n${msg}`);
       return Alert.alert('Cannot Grade', msg);
     }
@@ -255,12 +281,11 @@ export default function HostScreen({ navigation }: any) {
 
     try {
       if (targetBet?.isP2P && newStatus === 'open') {
-        // P2P Re-Open: Refund points and completely wipe the claimed slots
         const { error } = await supabase.rpc('reset_p2p_bet', { p_bet_id: betId });
         if (error) throw error;
       } else {
-        // Standard House Bet toggle OR Locking a P2P bet
-        const table = targetBet?.isP2P ? 'p2p_prop_bets' : 'bets';
+        // Includes standard bets, p2p locks, and potentially blind locks
+        const table = targetBet?.isP2P ? 'p2p_prop_bets' : targetBet?.isBlind ? 'blind_matchups' : 'bets';
         await supabase.from(table).update({ status: newStatus }).eq('id', betId);
       }
       fetchHostData(); 
@@ -277,11 +302,14 @@ export default function HostScreen({ navigation }: any) {
         { text: 'Delete & Refund', style: 'destructive', onPress: async () => {
             try {
               if (targetBet?.isP2P) {
-                // Delete a Prop Challenge
                 const { error } = await supabase.rpc('delete_p2p_bet_and_refund', { p_bet_id: betId });
                 if (error) throw error;
+              } else if (targetBet?.isBlind) {
+                // If the blind match hasn't been matched yet, there's no money locked in escrow, so we can just delete. 
+                // If it IS matched, we'd need a refund RPC (We will handle this later, simple delete for now)
+                const { error } = await supabase.from('blind_matchups').delete().eq('id', betId);
+                if (error) throw error;
               } else {
-                // Delete a House Bet
                 const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
                 if (error) throw error;
               }
@@ -309,23 +337,28 @@ export default function HostScreen({ navigation }: any) {
   async function handleGradeBet(winningOptionId: string) {
     setIsGrading(true);
     try {
-      if (selectedBet.isP2P) {
-        // Determine if Side A or Side B won based on the ID clicked
+      // --- NEW: BLIND GRADING EXECUTION ---
+      if (selectedBet.isBlind) {
         const winnerSide = winningOptionId === 'A' ? 'A' : 'B';
-        
+        const { error } = await supabase.rpc('grade_blind_match', { 
+          p_matchup_id: selectedBet.id, 
+          p_winning_side: winnerSide 
+        });
+        if (error) throw error;
+      } 
+      // --- EXISTING P2P & HOUSE GRADING ---
+      else if (selectedBet.isP2P) {
+        const winnerSide = winningOptionId === 'A' ? 'A' : 'B';
         const { error } = await supabase.rpc('resolve_p2p_bet', { 
           p_bet_id: selectedBet.id, 
           p_winner_side: winnerSide 
         });
-        
         if (error) throw error;
       } else {
-        // Standard House Bet logic
         const { error } = await supabase.rpc('resolve_bet', { 
           target_bet_id: selectedBet.id, 
           winning_opt_id: winningOptionId 
         });
-        
         if (error) throw error;
       }
 
@@ -374,14 +407,9 @@ export default function HostScreen({ navigation }: any) {
     const title = 'Close Board Forever?';
     const msg = 'End game and lock the board. Any ungraded bets (Prop or House) will be fully refunded.';
 
-    // --- WEB WORKAROUND ---
     if (Platform.OS === 'web') {
-      if (window.confirm(`${title}\n\n${msg}`)) {
-        executeClose();
-      }
-    } 
-    // --- NATIVE MOBILE ---
-    else {
+      if (window.confirm(`${title}\n\n${msg}`)) executeClose();
+    } else {
       Alert.alert(title, msg, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'End Event', style: 'destructive', onPress: executeClose }
@@ -391,14 +419,10 @@ export default function HostScreen({ navigation }: any) {
 
   async function executeClose() {
     try {
-      // Call the new sweeping RPC instead of just a basic status update
       const { error } = await supabase.rpc('close_board_and_refund', { 
         p_campaign_id: activeCampaignId 
       });
-      
       if (error) throw error;
-      
-      // Kick host to the podium
       navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
     } catch (error: any) { 
       Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
@@ -480,9 +504,13 @@ export default function HostScreen({ navigation }: any) {
             
             {/* Header & Status */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <Text style={[styles.betQuestion, { flex: 1, paddingRight: 10 }]}>{item.question}</Text>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                {item.isBlind && <Text style={{ color: '#BB86FC', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🤝 BLIND MATCH</Text>}
+                {item.isP2P && <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🥊 P2P PROP</Text>}
+                <Text style={styles.betQuestion}>{item.question}</Text>
+              </View>
               <Text style={{ 
-                color: item.status === 'open' ? '#00D084' : item.status === 'locked' ? '#FFD700' : '#ff4444', 
+                color: item.status === 'open' ? '#00D084' : (item.status === 'locked' || item.status === 'matched') ? '#FFD700' : '#ff4444', 
                 fontWeight: 'bold', fontSize: 12 
               }}>
                 {item.status.toUpperCase()}
@@ -492,24 +520,26 @@ export default function HostScreen({ navigation }: any) {
             {/* Buttons */}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
               
-              {item.status === 'open' && (
+              {item.status === 'open' && !item.isBlind && (
                 <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBetStatus(item.id, 'locked')}>
                   <Text style={styles.actionBtnText}>🔒 Lock Betting</Text>
                 </TouchableOpacity>
               )}
 
-              {item.status === 'locked' && (
+              {(item.status === 'locked' || item.status === 'matched') && (
                 <>
-                  <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => toggleBetStatus(item.id, 'open')}>
-                    <Text style={styles.actionBtnTextSecondary}>🔓 Re-Open</Text>
-                  </TouchableOpacity>
+                  {!item.isBlind && (
+                    <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => toggleBetStatus(item.id, 'open')}>
+                      <Text style={styles.actionBtnTextSecondary}>🔓 Re-Open</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity style={styles.actionBtn} onPress={() => openGradeModal(item)}>
                     <Text style={styles.actionBtnText}>✅ Grade</Text>
                   </TouchableOpacity>
                 </>
               )}
 
-              {item.status === 'graded' && (
+              {item.status === 'graded' && !item.isBlind && (
                 <TouchableOpacity style={styles.actionBtnDanger} onPress={() => handleReverseGrading(item.id)}>
                   <Text style={styles.actionBtnTextDanger}>↩️ Reverse</Text>
                 </TouchableOpacity>
@@ -582,19 +612,58 @@ export default function HostScreen({ navigation }: any) {
 
             <View style={styles.typeSelectorRow}>
               <TouchableOpacity style={[styles.typeBtn, betType === 'prop' && styles.typeBtnActive]} onPress={() => handleToggleBetType('prop')}>
-                <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>House Props</Text>
+                <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.typeBtn, betType === 'over_under' && styles.typeBtnActive]} onPress={() => handleToggleBetType('over_under')}>
-                <Text style={[styles.typeBtnText, betType === 'over_under' && styles.typeBtnTextActive]}>Over/Under</Text>
+                <Text style={[styles.typeBtnText, betType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.typeBtn, betType === 'p2p' && styles.typeBtnActive]} onPress={() => handleToggleBetType('p2p')}>
-                <Text style={[styles.typeBtnText, betType === 'p2p' && styles.typeBtnTextActive]}>P2P Challenge</Text>
+                <Text style={[styles.typeBtnText, betType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeBtn, betType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleToggleBetType('blind')}>
+                <Text style={[styles.typeBtnText, betType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
               </TouchableOpacity>
             </View>
             
             <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
-              
-              {betType === 'p2p' ? (
+              {betType === 'blind' ? (
+                // --- BLIND MATCH UI ---
+                <>
+                  <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                  <TextInput style={styles.input} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Team A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Team B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
+                      <TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Your Blind Bid</Text>
+                      <TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={setBlindMultiplier} placeholder="2.0" />
+                    </View>
+                  </View>
+
+                  <View style={[styles.mathBox, { borderColor: '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)' }]}>
+                    <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>How this Blind Auction works:</Text>
+                    
+                    <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+                      You are placing a hidden bid on <Text style={{color: '#fff', fontWeight: 'bold'}}>{p2pOptionA || 'Team A'}</Text>.
+                      If the challenger bids LOWER than your {blindMultiplier || '0'}x, THEY get {p2pOptionA || 'Team A'} and YOU get pushed onto <Text style={{color: '#fff', fontWeight: 'bold'}}>{p2pOptionB || 'Team B'}</Text>. 
+                      If they bid HIGHER, you keep {p2pOptionA || 'Team A'}.
+                    </Text>
+
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 4 }}>Risk if you keep {p2pOptionA || 'Team A'}: <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindBase || '0'} pts</Text></Text>
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 4 }}>Risk if you get {p2pOptionB || 'Team B'}: <Text style={{color: '#fff', fontWeight: 'bold'}}>~{((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0)} pts*</Text></Text>
+                    
+                    <Text style={{ color: '#666', fontSize: 10, fontStyle: 'italic', marginTop: 10 }}>*Final risk depends on the challenger's averaged odds.</Text>
+                  </View>
+                </>
+              ) : betType === 'p2p' ? (
                 // --- P2P CHALLENGE UI ---
                 <>
                   <Text style={styles.label}>The Scenario</Text>
@@ -653,25 +722,25 @@ export default function HostScreen({ navigation }: any) {
             <Text style={styles.modalTitle}>Who Won?</Text>
             <Text style={styles.modalSubtitle}>{selectedBet?.question}</Text>
             
-            {selectedBet?.isP2P ? (
-              // --- P2P WINNER BUTTONS ---
+            {selectedBet?.isP2P || selectedBet?.isBlind ? (
+              // --- P2P & BLIND WINNER BUTTONS ---
               <>
                 <TouchableOpacity 
                   style={styles.winnerButton} 
                   onPress={() => handleGradeBet('A')} 
-                  disabled={isGrading || !selectedBet.side_a_user_id}
+                  disabled={isGrading || (selectedBet.isP2P && !selectedBet.side_a_user_id) || (selectedBet.isBlind && !selectedBet.user_2_id)}
                 >
                   <Text style={styles.winnerButtonText}>
-                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.option_a_label}`}
+                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.isBlind ? selectedBet.side_a_label : selectedBet.option_a_label}`}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.winnerButton} 
                   onPress={() => handleGradeBet('B')} 
-                  disabled={isGrading || !selectedBet.side_b_user_id}
+                  disabled={isGrading || (selectedBet.isP2P && !selectedBet.side_b_user_id) || (selectedBet.isBlind && !selectedBet.user_2_id)}
                 >
                   <Text style={styles.winnerButtonText}>
-                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.option_b_label}`}
+                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.isBlind ? selectedBet.side_b_label : selectedBet.option_b_label}`}
                   </Text>
                 </TouchableOpacity>
               </>
