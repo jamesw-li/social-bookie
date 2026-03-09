@@ -394,14 +394,21 @@ export default function DashboardScreen({ route, navigation }: any) {
               </Text>
               
               {/* --- NEW: BLIND TICKET SUMMARY --- */}
+              {/* --- NEW: BLIND TICKET SUMMARY --- */}
               {item.side_a_user_id === userId || item.side_b_user_id === userId ? (
                 (() => {
                   const isA = item.side_a_user_id === userId;
                   const oppId = isA ? item.side_b_user_id : item.side_a_user_id;
                   const oppName = getPlayerName(oppId);
-                  const myWager = isA ? item.base_amount : Math.trunc((item.base_amount * item.final_multiplier) - item.base_amount);
+                  
+                  // STRICT PARSING: Force Supabase strings into real numbers
+                  const baseAmt = parseFloat(item.base_amount) || 0;
+                  const finalMulti = parseFloat(item.final_multiplier) || 0;
+
+                  // Safe Math
+                  const myWager = isA ? baseAmt : Math.trunc((baseAmt * finalMulti) - baseAmt);
                   const myPick = isA ? item.side_a_label : item.side_b_label;
-                  const pot = Math.trunc(item.base_amount * item.final_multiplier);
+                  const pot = Math.trunc(baseAmt * finalMulti);
 
                   return (
                     <>
@@ -415,8 +422,8 @@ export default function DashboardScreen({ route, navigation }: any) {
                           <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{myWager} pts</Text></Text>
                         </View>
                         <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
-                          <Text style={[styles.lockedDetails, { color: '#FFD700', fontWeight: 'bold', fontSize: 16 }]}>
-                            Payout: {Math.trunc(item.total_pot)} pts
+                          <Text style={{ color: '#BB86FC', fontWeight: 'bold', fontSize: 16 }}>
+                            Payout: {pot} pts
                           </Text>
                         </View>
                       </View>
@@ -849,17 +856,26 @@ export default function DashboardScreen({ route, navigation }: any) {
 
                   if (!item.user_2_id) {
                     opponentName = 'Waiting for challenger...';
-                    question = item.question; pick = "Pending Match"; odds = "?"; wagerAmt = item.base_amount; potentialWin = "???";
+                    question = item.question; 
+                    pick = "Pending Match"; 
+                    odds = "?"; 
+                    wagerAmt = item.base_amount; 
+                    potentialWin = "???";
                   } else {
                     const opponentProfile = standings.find(s => String(s.user_id) === String(oppId));
                     opponentName = opponentProfile?.users?.display_name || 'Unknown Player';
                     question = item.question;
                     pick = isA ? item.side_a_label : item.side_b_label;
-                    odds = Number(item.final_multiplier).toFixed(2);
-                    wagerAmt = isA ? item.base_amount : Math.floor((item.base_amount * item.final_multiplier) - item.base_amount);
-                    potentialWin = Math.floor(item.base_amount * item.final_multiplier);
+                    
+                    // STRICT PARSING
+                    const baseAmt = parseFloat(item.base_amount) || 0;
+                    const finalMulti = parseFloat(item.final_multiplier) || 0;
+
+                    odds = finalMulti.toFixed(2);
+                    wagerAmt = isA ? baseAmt : Math.trunc((baseAmt * finalMulti) - baseAmt);
+                    potentialWin = Math.trunc(baseAmt * finalMulti);
                   }
-                } 
+                }
                 // --- EXISTING P2P & HOUSE TICKET LOGIC ---
                 else if (isP2P) {
                   isA = String(item.side_a_user_id) === String(userId);
