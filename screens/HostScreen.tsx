@@ -706,7 +706,7 @@ export default function HostScreen({ navigation }: any) {
                       <TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
                       <TextInput 
                         style={styles.input}
                         keyboardType="decimal-pad"
