@@ -27,13 +27,17 @@ export default function CreateBoardScreen({ navigation }: any) {
       const userId = await AsyncStorage.getItem('userId');
       if (!userId) throw new Error("Could not find your User ID.");
 
-      // 1. Create the Campaign
+      // GENERATE THE ROOM CODE
+      const newJoinCode = generateJoinCode();
+
+      // 1. Create the Campaign (Now with join_code!)
       const { data: campaignData, error: campaignError } = await supabase
         .from('campaigns')
         .insert([{ 
           name: campaignName, 
           host_id: userId, 
-          bankroll_type: 'upfront' 
+          bankroll_type: 'upfront',
+          join_code: newJoinCode // <-- NEW FIELD SAVED TO DB
         }])
         .select()
         .single();
@@ -67,7 +71,7 @@ export default function CreateBoardScreen({ navigation }: any) {
       await AsyncStorage.setItem('campaignId', campaignData.id);
       await AsyncStorage.setItem('campaignName', campaignData.name);
 
-      Alert.alert('Success!', 'Your board is live.');
+      Alert.alert('Success!', `Your board is live. Room Code: ${newJoinCode}`);
       navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
 
     } catch (error: any) {

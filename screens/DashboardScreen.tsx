@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
+import * as Clipboard from 'expo-clipboard';
 
 export default function DashboardScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
@@ -33,6 +34,26 @@ export default function DashboardScreen({ route, navigation }: any) {
   // NEW: State for Tabs and Standings Data
   const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
   const [standings, setStandings] = useState<any[]>([]);
+
+  const [p2pModalVisible, setP2pModalVisible] = useState(false);
+  const [p2pWager, setP2pWager] = useState('100');
+  const [p2pMultiplier, setP2pMultiplier] = useState('1.0');
+  const [activeP2PBetId, setActiveP2PBetId] = useState<string | null>(null);
+  const [activeP2POption, setActiveP2POption] = useState<string>('');
+
+  // NEW: State for the Room Code
+  const [joinCode, setJoinCode] = useState<string>('');
+
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+
+  // --- P2P CHALLENGE STATE ---
+  const [p2pModalVisible, setP2pModalVisible] = useState(false);
+  const [p2pWager, setP2pWager] = useState('100');
+  const [p2pMultiplier, setP2pMultiplier] = useState('1.0'); // Default to even money (1.0x)
+  
+  // To track which question and option they are challenging on:
+  const [activeP2PBetId, setActiveP2PBetId] = useState<string | null>(null);
+  const [activeP2POption, setActiveP2POption] = useState<string>('');
 
   useEffect(() => {
     let walletSub: any;
@@ -104,6 +125,50 @@ export default function DashboardScreen({ route, navigation }: any) {
     };
   }, []);
 
+  async function handleSubmitP2PChallenge() {
+    const wagerAmount = parseFloat(p2pWager);
+    const multiplier = parseFloat(p2pMultiplier);
+
+    if (isNaN(wagerAmount) || wagerAmount <= 0) {
+      return Alert.alert('Invalid Wager', 'Please enter a valid amount to bet.');
+    }
+    if (isNaN(multiplier) || multiplier <= 0) {
+      return Alert.alert('Invalid Odds', 'Multiplier must be greater than 0.');
+    }
+    if (!activeP2PBetId || !activeP2POption) {
+      return Alert.alert('Error', 'Missing bet information.');
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('create_p2p_challenge', {
+        p_campaign_id: campaignId,
+        p_bet_id: activeP2PBetId,
+        p_creator_id: userId,
+        p_creator_option: activeP2POption,
+        p_wager_amount: wagerAmount,
+        p_multiplier: multiplier
+      });
+
+      if (error) throw error;
+
+      Alert.alert('Challenge Created!', 'Your wager is in escrow waiting for a challenger.');
+      setP2pModalVisible(false);
+      
+      // Refresh the board to update their wallet balance and show the new challenge
+      loadBoard(); 
+
+    } catch (error: any) {
+      Alert.alert('Could not create challenge', error.message);
+    }
+  }
+
+  async function copyToClipboard() {
+    if (!joinCode) return;
+    await Clipboard.setStringAsync(joinCode);
+    Alert.alert('Copied!', 'Room code copied to clipboard. Send it to your friends!');
+    setShareModalVisible(false); // Closes the modal after copying
+  }
+
   async function loadBoard() {
     setLoading(true);
     try {
@@ -114,6 +179,16 @@ export default function DashboardScreen({ route, navigation }: any) {
       
       setUserId(storedUserId);
       setCampaignId(storedCampaignId);
+      // NEW: Fetch the Room Code
+      const { data: campaignData } = await supabase
+        .from('campaigns')
+        .select('join_code')
+        .eq('id', storedCampaignId)
+        .single();
+        
+      if (campaignData?.join_code) {
+        setJoinCode(campaignData.join_code);
+      }
 
       // 1. Fetch Wallet & Role
       const { data: participantData } = await supabase
@@ -428,6 +503,11 @@ function openBetSlip(bet: any, option?: any) {
           </TouchableOpacity>
           
           <View style={styles.rightNavGroup}>
+            {joinCode ? (
+              <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}>
+                <Text style={styles.navPillShareText}>📤 Share</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}>
               <Text style={styles.navPillMyBetsText}>🧾 My Bets</Text>
             </TouchableOpacity>
@@ -528,6 +608,27 @@ function openBetSlip(bet: any, option?: any) {
           <Text style={activeTab === 'standings' ? styles.bottomNavTextActive : styles.bottomNavText}>Standings</Text>
         </TouchableOpacity>
       </View>
+      {/* --- SHARE MODAL --- */}
+      <Modal visible={shareModalVisible} transparent={true} animationType="fade">
+        <View style={styles.centeredModalOverlay}>
+          <View style={styles.shareModalContainer}>
+            <Text style={styles.shareModalTitle}>Invite Players</Text>
+            <Text style={styles.shareModalSub}>Give this code to your friends so they can join the action.</Text>
+
+            <View style={styles.codeDisplayBox}>
+              <Text style={styles.hugeCodeText}>{joinCode}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.copyButton} onPress={copyToClipboard}>
+              <Text style={styles.copyButtonText}>📋 Copy Code</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShareModalVisible(false)}>
+              <Text style={styles.closeModalText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
       {/* Bet Slip Modal remains unchanged */}
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
@@ -664,6 +765,54 @@ function openBetSlip(bet: any, option?: any) {
           </View>
         </View>
       </Modal>
+      {/* --- P2P CUSTOM CHALLENGE MODAL --- */}
+      <Modal visible={p2pModalVisible} transparent={true} animationType="slide">
+        <View style={styles.centeredModalOverlay}>
+          <View style={styles.p2pModalContainer}>
+            <Text style={styles.shareModalTitle}>Issue a Challenge</Text>
+            <Text style={styles.shareModalSub}>Set your terms for: {activeP2POption}</Text>
+
+            <Text style={styles.inputLabel}>Your Wager (Points)</Text>
+            <TextInput
+              style={styles.p2pInput}
+              keyboardType="numeric"
+              value={p2pWager}
+              onChangeText={setP2pWager}
+              placeholder="e.g. 500"
+              placeholderTextColor="#666"
+            />
+
+            <Text style={styles.inputLabel}>Your Desired Odds (Multiplier)</Text>
+            <TextInput
+              style={styles.p2pInput}
+              keyboardType="decimal-pad"
+              value={p2pMultiplier}
+              onChangeText={setP2pMultiplier}
+              placeholder="e.g. 2.5"
+              placeholderTextColor="#666"
+            />
+
+            {/* REAL-TIME MATH DISPLAY */}
+            <View style={styles.mathBox}>
+              <Text style={styles.mathText}>You Risk: {p2pWager || '0'} pts</Text>
+              <Text style={styles.mathText}>
+                Challenger Must Risk: {((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)).toFixed(0)} pts
+              </Text>
+              <Text style={styles.potText}>
+                Total Pot: {((parseFloat(p2pWager) || 0) + ((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))).toFixed(0)} pts
+              </Text>
+            </View>
+
+            <TouchableOpacity style={styles.copyButton} onPress={handleSubmitP2PChallenge}>
+              <Text style={styles.copyButtonText}>Submit Challenge</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setP2pModalVisible(false)}>
+              <Text style={styles.closeModalText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -679,9 +828,6 @@ const styles = StyleSheet.create({
   // Pill Buttons
   navPillLeave: { backgroundColor: '#2a2a2a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
   navPillLeaveText: { color: '#ff4444', fontWeight: 'bold', fontSize: 14 },
-  
-  navPillStandings: { backgroundColor: 'rgba(0, 208, 132, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#00D084' },
-  navPillStandingsText: { color: '#00D084', fontWeight: 'bold', fontSize: 14 },
   
   navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
   navPillHostText: { color: '#FFD700', fontWeight: 'bold', fontSize: 14 },
@@ -836,4 +982,32 @@ const styles = StyleSheet.create({
   standingsRank: { color: '#00D084', fontSize: 18, fontWeight: 'bold', marginRight: 15 },
   standingsName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   standingsScore: { color: '#FFD700', fontSize: 18, fontWeight: 'bold' },
+  // --- SHARE BUTTON STYLES ---
+  navPillShare: { backgroundColor: 'rgba(0, 208, 132, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#00D084' },
+  navPillShareText: { color: '#00D084', fontWeight: 'bold', fontSize: 14 },
+  
+// --- CENTERED MODAL OVERLAY ---
+  centeredModalOverlay: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(0, 0, 0, 0.7)' 
+  },
+  // --- SHARE MODAL STYLES ---
+  shareModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  shareModalTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
+  shareModalSub: { color: '#a0a0a0', fontSize: 14, textAlign: 'center', marginBottom: 25 },
+  codeDisplayBox: { backgroundColor: '#121212', paddingVertical: 20, paddingHorizontal: 40, borderRadius: 10, borderWidth: 2, borderColor: '#00D084', marginBottom: 25, width: '100%', alignItems: 'center' },
+  hugeCodeText: { color: '#00D084', fontSize: 40, fontWeight: 'bold', letterSpacing: 5 },
+  copyButton: { backgroundColor: '#00D084', width: '100%', paddingVertical: 15, borderRadius: 10, alignItems: 'center', marginBottom: 15 },
+  copyButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
+  closeModalBtn: { paddingVertical: 10, width: '100%', alignItems: 'center' },
+  closeModalText: { color: '#a0a0a0', fontSize: 16, fontWeight: 'bold' },
+  // --- P2P MODAL STYLES ---
+  p2pModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '90%', borderWidth: 1, borderColor: '#333' },
+  inputLabel: { color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 },
+  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
+  mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
+  mathText: { color: '#a0a0a0', fontSize: 14, marginBottom: 4 },
+  potText: { color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 },
 });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput } from 'react-native';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 
 export default function CampaignScreen({ route, navigation }: any) {
@@ -9,6 +10,8 @@ export default function CampaignScreen({ route, navigation }: any) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
   const [closedCampaigns, setClosedCampaigns] = useState<any[]>([]);
+  const [joinCode, setJoinCode] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
 
   useEffect(() => {
     fetchCampaigns();
@@ -46,6 +49,69 @@ export default function CampaignScreen({ route, navigation }: any) {
       }
     } catch (error: any) {
       console.error("Error fetching campaigns:", error.message);
+    }
+  }
+
+  async function handleJoinWithCode() {
+    if (!joinCode || joinCode.length !== 6) {
+      return Alert.alert('Invalid Code', 'Please enter a valid 6-digit room code.');
+    }
+
+    setIsJoining(true);
+    try {
+      const userId = await AsyncStorage.getItem('userId');
+      if (!userId) throw new Error("Could not find your User ID.");
+
+      const cleanCode = joinCode.trim().toUpperCase();
+
+      // 1. Look up the campaign by the join code
+      const { data: campaign, error: campaignError } = await supabase
+        .from('campaigns')
+        .select('id, name, status')
+        .eq('join_code', cleanCode)
+        .single();
+
+      if (campaignError || !campaign) {
+        throw new Error('Room not found. Double check the code!');
+      }
+
+      if (campaign.status === 'closed') {
+        throw new Error('This event has already ended.');
+      }
+
+      // 2. Check if the user is already in this room
+      const { data: existingParticipant } = await supabase
+        .from('campaign_participants')
+        .select('id')
+        .eq('campaign_id', campaign.id)
+        .eq('user_id', userId)
+        .single();
+
+      // 3. If they are new to the room, insert them and give them the bankroll
+      if (!existingParticipant) {
+        const { error: joinError } = await supabase
+          .from('campaign_participants')
+          .insert({
+            campaign_id: campaign.id,
+            user_id: userId,
+            role: 'guest',
+            global_point_balance: 10000 // The starting bankroll
+          });
+
+        if (joinError) throw joinError;
+      }
+
+      // 4. Save to phone memory and route to the Dashboard
+      await AsyncStorage.setItem('campaignId', campaign.id);
+      await AsyncStorage.setItem('campaignName', campaign.name);
+      
+      setJoinCode(''); // Clear the input box for next time
+      navigation.navigate('Dashboard');
+
+    } catch (error: any) {
+      Alert.alert('Error Joining', error.message);
+    } finally {
+      setIsJoining(false);
     }
   }
 
@@ -96,13 +162,34 @@ export default function CampaignScreen({ route, navigation }: any) {
       {/* --- STATIC HEADER --- */}
       <View>
         <Text style={styles.title}>Join an Event</Text>
+        
+        {/* NEW: Join via Code Box */}
+        <View style={styles.joinBox}>
+          <TextInput
+            style={styles.joinInput}
+            placeholder="Enter 6-Digit Code"
+            placeholderTextColor="#666"
+            autoCapitalize="characters"
+            maxLength={6}
+            value={joinCode}
+            onChangeText={setJoinCode}
+          />
+          <TouchableOpacity 
+            style={[styles.joinBtn, (!joinCode || isJoining) && { opacity: 0.5 }]} 
+            onPress={handleJoinWithCode}
+            disabled={!joinCode || isJoining}
+          >
+            <Text style={styles.joinBtnText}>{isJoining ? '...' : 'Join'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.subtitle}>Or create your own board:</Text>
         <TouchableOpacity 
           style={styles.createButton} 
           onPress={() => navigation.navigate('CreateBoard')}
         >
           <Text style={styles.createButtonText}>+ Host a New Game</Text>
         </TouchableOpacity>
-        <Text style={styles.subtitle}>Or join an active board below:</Text>
       </View>
 
       {/* --- SCROLLABLE ZONE 1: LIVE ACTION --- */}
@@ -171,4 +258,37 @@ const styles = StyleSheet.create({
     borderColor: '#333' 
   },
   campaignName: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  // --- JOIN BOX STYLES ---
+  joinBox: {
+    flexDirection: 'row',
+    marginTop: 15,
+    marginBottom: 20,
+    gap: 10,
+  },
+  joinInput: {
+    flex: 1,
+    backgroundColor: '#1e1e1e',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    color: '#00D084',
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 15,
+    height: 50,
+    letterSpacing: 2,
+  },
+  joinBtn: {
+    backgroundColor: '#00D084',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    height: 50,
+  },
+  joinBtnText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });
