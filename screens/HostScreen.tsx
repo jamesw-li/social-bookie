@@ -67,6 +67,8 @@ export default function HostScreen({ navigation }: any) {
     }
   };
 
+  const [walletBalance, setWalletBalance] = useState(0);
+
   useEffect(() => {
     fetchHostData();
 
@@ -93,7 +95,17 @@ export default function HostScreen({ navigation }: any) {
       setCurrentUserId(myUserId);
       const campaignId = await AsyncStorage.getItem('campaignId');
       setActiveCampaignId(campaignId); 
-      
+      // Grab the host's current wallet balance
+      const { data: participantData, error: participantError } = await supabase
+        .from('campaign_participants')
+        .select('global_point_balance')
+        .eq('campaign_id', campaignId) // or whatever your campaign ID variable is named
+        .eq('user_id', myUserId)
+        .single();
+
+      if (!participantError && participantData) {
+        setWalletBalance(participantData.global_point_balance);
+      }
       const { data: eventData } = await supabase
         .from('events').select('id').eq('campaign_id', campaignId).eq('status', 'live').single();
 
@@ -730,51 +742,63 @@ export default function HostScreen({ navigation }: any) {
                   </View>
                   
 
-                  <View style={[styles.mathBox, { borderColor: '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)' }]}>
-                    <Text style={{ color: '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
-                      How Your Bid Shapes the Market
-                    </Text>
+                  {(() => {
+                    const base = parseFloat(blindBase) || 0;
+                    const multi = parseFloat(blindMultiplier) || 0;
+                    const riskA = Math.trunc(base);
+                    const riskB = Math.trunc((base * multi) - base);
+                    const maxRisk = Math.max(riskA, riskB);
                     
-                    <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
-                      You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
-                    </Text>
+                    const currentBalance = walletBalance || 0;
+                    const isOverleveraged = maxRisk > currentBalance;
+                    const pot = Math.trunc(base * multi);
 
-                    {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
-                    <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
-                      <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
-                        Scenario A: You secure {p2pOptionA || 'Team A'}
-                      </Text>
-                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                        • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
-                      </Text>
-                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                        • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
-                      </Text>
-                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
-                        • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
-                      </Text>
-                    </View>
+                    return (
+                      <View style={[styles.mathBox, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: isOverleveraged ? 'rgba(255, 68, 68, 0.05)' : 'rgba(187, 134, 252, 0.05)' }]}>
+                        <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+                          {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'How Your Bid Shapes the Market'}
+                        </Text>
+                        
+                        <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
+                          You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+                        </Text>
 
-                    {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
-                    <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
-                      <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
-                        Scenario B: You are pushed to {p2pOptionB || 'Team B'}
-                      </Text>
-                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                        • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
-                      </Text>
-                      <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                        • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
-                      </Text>
-                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
-                        • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
-                      </Text>
-                    </View>
+                        {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
+                          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario A: You secure {p2pOptionA || 'Team A'}</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • You Risk: <Text style={{color: (isOverleveraged && riskA > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                        </View>
 
-                    <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
-                      *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
-                    </Text>
-                  </View>
+                        {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario B: You are pushed to {p2pOptionB || 'Team B'}</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • You Risk: <Text style={{color: (isOverleveraged && riskB > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                        </View>
+
+                        {isOverleveraged ? (
+                          <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
+                            You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
+                          </Text>
+                        ) : (
+                          <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
+                            *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
                 </>
               ) : betType === 'p2p' ? (
                 // --- P2P CHALLENGE UI ---
@@ -829,9 +853,28 @@ export default function HostScreen({ navigation }: any) {
               )}
             </ScrollView>
 
-            <TouchableOpacity style={[styles.submitBtn, isCreating && { opacity: 0.7 }]} onPress={() => handlePublishBet()} disabled={isCreating}>
-              <Text style={styles.submitBtnText}>{isCreating ? 'Publishing...' : 'Publish to Board'}</Text>
-            </TouchableOpacity>
+            {(() => {
+              let isOverleveraged = false;
+              const currentBalance = walletBalance || 0;
+
+              if (betType === 'p2p') {
+                isOverleveraged = Math.trunc(parseFloat(p2pWager) || 0) > currentBalance;
+              } else if (betType === 'blind') {
+                const base = parseFloat(blindBase) || 0;
+                const multi = parseFloat(blindMultiplier) || 0;
+                isOverleveraged = Math.max(Math.trunc(base), Math.trunc((base * multi) - base)) > currentBalance;
+              }
+
+              return (
+                <TouchableOpacity 
+                  style={[styles.submitBtn, (isCreating || isOverleveraged) && { opacity: 0.5, backgroundColor: '#444' }]} 
+                  onPress={handlePublishBet} 
+                  disabled={isCreating || isOverleveraged}
+                >
+                  <Text style={styles.submitBtnText}>{isCreating ? 'Creating...' : 'Create Bet'}</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </KeyboardAvoidingView>
       </Modal>

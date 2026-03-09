@@ -45,6 +45,20 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [blindModalVisible, setBlindModalVisible] = useState(false);
   const [selectedMatchup, setSelectedMatchup] = useState<any>(null);
   const [blindBid, setBlindBid] = useState('2.0');
+  const [blindBidPercent, setBlindBidPercent] = useState('50');
+
+  const syncBidFromMulti = (val: string) => {
+    setBlindBid(val);
+    const num = parseFloat(val);
+    if (num >= 1) setBlindBidPercent(((1 / num) * 100).toFixed(0));
+  };
+
+  const syncBidFromPercent = (val: string) => {
+    setBlindBidPercent(val);
+    const num = parseFloat(val);
+    if (num > 0 && num <= 100) setBlindBid((100 / num).toFixed(2));
+  };
+  
 
   useEffect(() => {
     let walletSub: any;
@@ -670,73 +684,104 @@ export default function DashboardScreen({ route, navigation }: any) {
       </View>
 
       {/* --- NEW: BLIND BID MODAL --- */}
-      <Modal visible={blindModalVisible} transparent={true} animationType="slide">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlayCenter}>
-          <View style={styles.gradeModalContent}>
-            {/* Grab the labels dynamically */}
-            {(() => {
-              const sideA = selectedMatchup?.side_a_label || 'Team A';
-              const sideB = selectedMatchup?.side_b_label || 'Team B';
-              
-              return (
-                <>
-                  <Text style={[styles.modalTitle, { color: '#BB86FC' }]}>Place Your Blind Bid</Text>
-                  <Text style={{ color: '#fff', fontSize: 18, textAlign: 'center', fontWeight: 'bold', marginBottom: 5 }}>{selectedMatchup?.question}</Text>
-                  
-                  {/* Explicitly show the matchup */}
-                  <Text style={{ color: '#BB86FC', fontSize: 16, textAlign: 'center', fontWeight: 'bold', marginBottom: 20 }}>
-                    {sideA} <Text style={{color: '#666', fontWeight: 'normal'}}>vs</Text> {sideB}
-                  </Text>
-                  
-                  <View style={{ backgroundColor: '#121212', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#333', marginBottom: 20 }}>
-                    <Text style={{ color: '#a0a0a0', textAlign: 'center', marginBottom: 10, fontSize: 14 }}>
-                      Host's Base Unit: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{blindBase} pts</Text>
-                    </Text>
-                    
-                    {/* The vital instructional text */}
-                    <Text style={{ color: '#a0a0a0', textAlign: 'center', fontSize: 12, lineHeight: 18 }}>
-                      Bid LOWER than the hidden creator to claim <Text style={{ color: '#fff', fontWeight: 'bold' }}>{sideA}</Text>.{"\n"}
-                      Bid HIGHER and you will get pushed to <Text style={{ color: '#fff', fontWeight: 'bold' }}>{sideB}</Text>.
-                    </Text>
-                  </View>
+      <Modal visible={blindModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.betSlipContainer}>
+            <View style={styles.gradeModalContent}>
+              {(() => {
+                const sideA = selectedMatchup?.side_a_label || 'Team A';
+                const sideB = selectedMatchup?.side_b_label || 'Team B';
+                const baseAmt = parseFloat(selectedMatchup?.base_amount) || 0;
+                const myBid = parseFloat(blindBid) || 1.0;
+                const currentBalance = walletBalance || 0;
 
-                  <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Your Multiplier Bid for {sideA}</Text>
-                  <TextInput 
-                    style={styles.p2pInput}
-                    keyboardType="decimal-pad"
-                    value={blindBid}
-                    onChangeText={setBlindBid}
-                    autoFocus
-                  />
+                // Math for the preview
+                const estTotalPot = Math.trunc(baseAmt * myBid);
+                const estUnderdogRisk = Math.trunc(estTotalPot - baseAmt);
+                
+                // Safety Check: Can they afford the worst-case scenario?
+                const maxPossibleRisk = Math.max(baseAmt, estUnderdogRisk);
+                const isOverleveraged = maxPossibleRisk > currentBalance;
 
-                  {/* --- DYNAMIC PREVIEW --- */}
-                  <View style={styles.previewContainer}>
-                    <Text style={styles.previewTitle}>Potential Outcomes:</Text>
+                return (
+                  <>
+                    <Text style={[styles.modalTitle, { color: '#BB86FC' }]}>Place Your Blind Bid</Text>
                     
-                    <View style={styles.previewRow}>
-                      <Text style={styles.previewText}>If you get {sideA} (Lower Bid):</Text>
-                      <Text style={styles.previewRisk}>Risk {riskIfFav} pts</Text>
+                    {/* MATCHUP HEADER */}
+                    <View style={{ marginBottom: 20, alignItems: 'center' }}>
+                      <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedMatchup?.question}</Text>
+                      <Text style={{ color: '#BB86FC', fontSize: 14 }}>{sideA} vs {sideB}</Text>
                     </View>
-                    
-                    <View style={styles.previewRow}>
-                      <Text style={styles.previewText}>If you get {sideB} (Higher Bid):</Text>
-                      <Text style={styles.previewRisk}>Risk ~{riskIfDog} pts*</Text>
-                    </View>
-                    
-                    <Text style={styles.disclaimer}>*Actual {sideB} risk depends on the averaged odds.</Text>
-                  </View>
 
-                  <TouchableOpacity style={[styles.confirmButton, { backgroundColor: '#BB86FC' }, isSubmitting && { opacity: 0.7 }]} onPress={submitBlindBid} disabled={isSubmitting}>
-                    <Text style={[styles.confirmButtonText, { color: '#000' }]}>{isSubmitting ? 'Locking...' : 'Lock In Blind Bid'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setBlindModalVisible(false)}>
-                    <Text style={styles.closeSlipText}>Cancel</Text>
-                  </TouchableOpacity>
-                </>
-              );
-            })()}
+                    {/* DUAL INPUT ROW */}
+                    <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
+                        <TextInput 
+                          style={styles.p2pInput}
+                          keyboardType="decimal-pad"
+                          value={blindBid}
+                          onChangeText={syncBidFromMulti}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Win Probability (%)</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TextInput 
+                            style={[styles.p2pInput, { flex: 1 }]}
+                            keyboardType="number-pad"
+                            value={blindBidPercent}
+                            onChangeText={syncBidFromPercent}
+                          />
+                          <Text style={{ color: '#fff', position: 'absolute', right: 15, fontWeight: 'bold' }}>%</Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* DYNAMIC PAYOUT PREVIEW */}
+                    <View style={[styles.previewContainer, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)', padding: 15 }]}>
+                      <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+                        {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'Potential Outcomes (Estimates*)'}
+                      </Text>
+                      
+                      {/* SCENARIO A */}
+                      <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 15 }}>
+                        <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 12 }}>If you bid LOWER (You get {sideA}):</Text>
+                        <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: '#fff'}}>{baseAmt} pts</Text></Text>
+                        <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
+                      </View>
+
+                      {/* SCENARIO B */}
+                      <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+                        <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 12 }}>If you bid HIGHER (You get {sideB}):</Text>
+                        <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: isOverleveraged ? '#ff4444' : '#fff', fontWeight: isOverleveraged ? 'bold' : 'normal'}}>{estUnderdogRisk} pts</Text></Text>
+                        <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
+                      </View>
+
+                      {isOverleveraged && (
+                        <Text style={{ color: '#ff4444', fontSize: 10, marginTop: 10, textAlign: 'center', fontWeight: 'bold' }}>
+                          You need {maxPossibleRisk - currentBalance} more points to cover this bid.
+                        </Text>
+                      )}
+                    </View>
+
+                    <TouchableOpacity 
+                      style={[styles.confirmButton, { backgroundColor: isOverleveraged ? '#444' : '#BB86FC' }, isSubmitting && { opacity: 0.7 }]} 
+                      onPress={submitBlindBid} 
+                      disabled={isSubmitting || isOverleveraged}
+                    >
+                      <Text style={styles.confirmButtonText}>{isSubmitting ? 'Locking...' : 'Lock In Blind Bid'}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setBlindModalVisible(false)}>
+                      <Text style={styles.closeSlipText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              })()}
+            </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* --- SHARE MODAL --- */}
