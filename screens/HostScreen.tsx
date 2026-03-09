@@ -44,7 +44,28 @@ export default function HostScreen({ navigation }: any) {
   // --- BLIND MATCH STATES ---
   const [blindBase, setBlindBase] = useState('100');
   const [blindMultiplier, setBlindMultiplier] = useState('2.0');
+  const [blindPercent, setBlindPercent] = useState('50');
   const [blindMatchups, setBlindMatchups] = useState<any[]>([]); // NEW: State for blind matches
+
+  // Sync Percent when Multiplier changes
+  const updateMultiplier = (val: string) => {
+    setBlindMultiplier(val);
+    const num = parseFloat(val);
+    if (num >= 1) {
+      const p = (1 / num) * 100;
+      setBlindPercent(p.toFixed(0)); // Round to nearest whole percent
+    }
+  };
+
+  // Sync Multiplier when Percent changes
+  const updatePercent = (val: string) => {
+    setBlindPercent(val);
+    const num = parseFloat(val);
+    if (num > 0 && num <= 100) {
+      const m = 100 / num;
+      setBlindMultiplier(m.toFixed(2));
+    }
+  };
 
   useEffect(() => {
     fetchHostData();
@@ -685,10 +706,29 @@ export default function HostScreen({ navigation }: any) {
                       <TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Your Blind Bid</Text>
-                      <TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={setBlindMultiplier} placeholder="2.0" />
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
+                      <TextInput 
+                        style={styles.input}
+                        keyboardType="decimal-pad"
+                        value={blindMultiplier}
+                        onChangeText={updateMultiplier}
+                      />
+                    </View>
+                    
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TextInput 
+                          style={[styles.input, { flex: 1 }]}
+                          keyboardType="number-pad"
+                          value={blindPercent}
+                          onChangeText={updatePercent}
+                        />
+                        <Text style={{ color: '#fff', marginLeft: -30, marginRight: 15, fontWeight: 'bold' }}>%</Text>
+                      </View>
                     </View>
                   </View>
+                  
 
                   <View style={[styles.mathBox, { borderColor: '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)' }]}>
                     <Text style={{ color: '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
