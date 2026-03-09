@@ -10,9 +10,14 @@ export default function HostScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [bets, setBets] = useState<any[]>([]);
-  const [proposals, setProposals] = useState<any[]>([]);
+  
+  // --- DUAL INBOX STATES ---
+  const [proposals, setProposals] = useState<any[]>([]); // Mode A: Ideas
+  const [pendingPitches, setPendingPitches] = useState<any[]>([]); // Mode B: Challenges
+  
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [participants, setParticipants] = useState<any[]>([]);
+  
   // Grading & Creation States
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
   const [selectedBet, setSelectedBet] = useState<any>(null);
@@ -21,8 +26,10 @@ export default function HostScreen({ navigation }: any) {
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  // NEW: Tracks which Guest Idea is currently being converted
+  const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
   
-  // NEW: Bet Type State
+  // Bet Type State
   const [betType, setBetType] = useState('prop'); // 'prop' or 'over_under'
   const [newQuestion, setNewQuestion] = useState('');
   const [newOptions, setNewOptions] = useState([
@@ -33,24 +40,33 @@ export default function HostScreen({ navigation }: any) {
   useEffect(() => {
     fetchHostData();
 
-    // Listen for new Guest Proposals instantly
+    // 1. Listen for standard Idea Pitches
     const proposalSub = supabase
       .channel('public:guest_proposals')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => {
         fetchHostData(); 
       }).subscribe();
 
-    return () => { supabase.removeChannel(proposalSub); };
+    // 2. Listen for P2P Challenges
+    const pitchSub = supabase
+      .channel('public:p2p_prop_bets')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => {
+        fetchHostData(); 
+      }).subscribe();
+
+    return () => { 
+      supabase.removeChannel(proposalSub); 
+      supabase.removeChannel(pitchSub);
+    };
   }, []);
 
   async function fetchHostData() {
     setLoading(true);
     try {
-      // Save your own ID to prevent self-lockout
       const myUserId = await AsyncStorage.getItem('userId');
       setCurrentUserId(myUserId);
       const campaignId = await AsyncStorage.getItem('campaignId');
-      setActiveCampaignId(campaignId); // <-- Save this for our elevate function
+      setActiveCampaignId(campaignId); 
       
       const { data: eventData } = await supabase
         .from('events').select('id').eq('campaign_id', campaignId).eq('status', 'live').single();
@@ -58,53 +74,96 @@ export default function HostScreen({ navigation }: any) {
       if (!eventData) return;
       setActiveEventId(eventData.id);
 
-      // Fetch all participants so we can manage them
-      const { data: participantsData } = await supabase
+      // 1. Participants
+      const { data: pData } = await supabase
         .from('campaign_participants')
         .select('user_id, role, users(display_name)')
         .eq('campaign_id', campaignId);
-      if (participantsData) setParticipants(participantsData);
+      setParticipants(pData ?? []);
 
-      // Fetch open, locked, and graded bets
+      // 2. Fetch Regular House Bets
       const { data: betsData } = await supabase
         .from('bets')
         .select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`)
         .eq('event_id', eventData.id)
-        .in('status', ['open', 'locked', 'graded']); // Removed the .order() crash risk!
-      
-      if (betsData) setBets(betsData);
-      
-      if (betsData) setBets(betsData);
+        .in('status', ['open', 'locked', 'graded']);
 
-      // Fetch pending proposals
+      // 3. Fetch Approved P2P Bets
+      const { data: approvedP2P } = await supabase
+        .from('p2p_prop_bets')
+        .select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)')
+        .eq('campaign_id', campaignId)
+        .in('status', ['open', 'locked']);
+
+      // --- SAFE MERGE ---
+      const safeBets = betsData ?? [];
+      const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true }));
+      setBets([...safeP2P, ...safeBets]);
+
+      // 4. Fetch Inbox 1: Ideas
       const { data: propsData } = await supabase
         .from('guest_proposals').select('id, suggestion, users(display_name)')
         .eq('event_id', eventData.id).eq('status', 'pending');
-      if (propsData) setProposals(propsData);
+      setProposals(propsData ?? []);
+
+      // 5. Fetch Inbox 2: Challenges
+      const { data: pitchesData } = await supabase
+        .from('p2p_prop_bets')
+        .select(`*, users!p2p_prop_bets_proposer_id_fkey ( display_name )`)
+        .eq('campaign_id', campaignId)
+        .eq('status', 'pending_approval');
+      setPendingPitches(pitchesData ?? []);
 
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      console.error(error);
+      if (Platform.OS !== 'web') Alert.alert('Error', error.message);
     } finally {
       setLoading(false);
     }
+  }
+  
+  // --- IDEA ACTIONS (INBOX 1) ---
+ function convertProposalToBet(proposal: any) {
+    setNewQuestion(proposal.suggestion);
+    setActiveProposalId(proposal.id); // <-- Save the ID here
+    setCreateModalVisible(true);
+  }
+
+  async function rejectProposal(id: string) {
+    await supabase.from('guest_proposals').update({ status: 'rejected' }).eq('id', id);
+    fetchHostData();
+  }
+
+  // --- CHALLENGE ACTIONS (INBOX 2) ---
+  async function handleApprovePitch(pitchId: string) {
+    try {
+      const { error } = await supabase.from('p2p_prop_bets').update({ status: 'open' }).eq('id', pitchId);
+      if (error) throw error;
+      Alert.alert('Approved!', 'The challenge is now live on the board.');
+      fetchHostData(); 
+    } catch (error: any) { Alert.alert('Error approving pitch', error.message); }
+  }
+
+  async function handleRejectPitch(pitchId: string) {
+    try {
+      const { error } = await supabase.from('p2p_prop_bets').delete().eq('id', pitchId);
+      if (error) throw error;
+      fetchHostData();
+    } catch (error: any) { Alert.alert('Error rejecting pitch', error.message); }
   }
 
   // --- BET CREATION LOGIC ---
   function handleToggleBetType(type: string) {
     setBetType(type);
     if (type === 'over_under') {
-      // Auto-fill the labels for Over/Under
-      setNewOptions([
-        { id: 1, label: 'Over', odds: '1.9' },
-        { id: 2, label: 'Under', odds: '1.9' }
-      ]);
+      setNewOptions([{ id: 1, label: 'Over', odds: '1.9' }, { id: 2, label: 'Under', odds: '1.9' }]);
     } else {
       setNewOptions([{ id: 1, label: '', odds: '2.0' }, { id: 2, label: '', odds: '1.5' }]);
     }
   }
 
   function handleAddOption() {
-    if (betType === 'over_under') return; // Lock to 2 options for O/U
+    if (betType === 'over_under') return; 
     setNewOptions([...newOptions, { id: Date.now(), label: '', odds: '1.0' }]);
   }
 
@@ -112,7 +171,7 @@ export default function HostScreen({ navigation }: any) {
     setNewOptions(newOptions.map(opt => opt.id === id ? { ...opt, [field]: value } : opt));
   }
 
-  async function handlePublishBet(proposalIdToClear: string | null = null) {
+  async function handlePublishBet() {
     if (!newQuestion.trim()) return Alert.alert('Hold up', 'You need a question!');
     const validOptions = newOptions.filter(opt => opt.label.trim() !== '');
     if (validOptions.length < 2) return Alert.alert('Hold up', 'You need at least two options.');
@@ -132,13 +191,14 @@ export default function HostScreen({ navigation }: any) {
 
       await supabase.from('bet_options').insert(optionsToInsert);
 
-      // If this came from a proposal, mark it as approved
-      if (proposalIdToClear) {
-        await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', proposalIdToClear);
+      // --- THE FIX: Mark the tracked proposal as approved ---
+      if (activeProposalId) {
+        await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', activeProposalId);
       }
 
       setNewQuestion('');
-      handleToggleBetType('prop'); // Reset form
+      setActiveProposalId(null); // <-- Reset it so it doesn't accidentally clear the next bet!
+      handleToggleBetType('prop'); 
       setCreateModalVisible(false);
       fetchHostData(); 
 
@@ -149,49 +209,31 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
-  // --- PROPOSAL ACTIONS ---
-  function convertProposalToBet(proposal: any) {
-    setNewQuestion(proposal.suggestion);
-    setCreateModalVisible(true);
-  }
-
-  async function rejectProposal(id: string) {
-    await supabase.from('guest_proposals').update({ status: 'rejected' }).eq('id', id);
-    fetchHostData();
-  }
-
-  // ... (Keep handleGradeBet and openGradeModal exactly the same as before)
+  // --- BET MANAGEMENT ACTIONS ---
   function openGradeModal(bet: any) { setSelectedBet(bet); setGradeModalVisible(true); }
+  
   async function toggleBetStatus(betId: string, newStatus: string) {
+    // Find the bet in our local state to see if it's P2P
+    const targetBet = bets.find(b => b.id === betId);
+    const table = targetBet?.isP2P ? 'p2p_prop_bets' : 'bets';
+
     try {
-      await supabase.from('bets').update({ status: newStatus }).eq('id', betId);
-      fetchHostData(); // Refresh UI
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
+      await supabase.from(table).update({ status: newStatus }).eq('id', betId);
+      fetchHostData(); 
+    } catch (error: any) { 
+      Alert.alert('Error', error.message); 
     }
   }
 
   async function handleDeleteBet(betId: string) {
-    Alert.alert(
-      'Trash & Refund Bet?',
-      'This will permanently delete the bet and refund any points wagered back to the players.',
-      [
+    Alert.alert('Trash & Refund Bet?', 'Permanently delete and refund points?', [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete & Refund', 
-          style: 'destructive', 
-          onPress: async () => {
+        { text: 'Delete & Refund', style: 'destructive', onPress: async () => {
             try {
-              // Call our new Supabase function to handle the refund math AND the deletion
               const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
-
               if (error) throw error;
-              
-              Alert.alert('Deleted', 'Bet removed and points refunded.');
-              fetchHostData(); // Refresh the board
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
+              fetchHostData(); 
+            } catch (error: any) { Alert.alert('Error', error.message); }
           }
         }
       ]
@@ -199,102 +241,97 @@ export default function HostScreen({ navigation }: any) {
   }
 
   async function handleReverseGrading(betId: string) {
-    Alert.alert('Reverse Grading?', 'This will claw back all payouts and set the bet back to Locked.', [
+    Alert.alert('Reverse Grading?', 'Claw back payouts and unlock bet.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reverse', style: 'destructive', onPress: async () => {
           try {
             await supabase.rpc('undo_resolve_bet', { target_bet_id: betId });
             fetchHostData();
-          } catch (error: any) {
-            Alert.alert('Error', error.message);
-          }
+          } catch (error: any) { Alert.alert('Error', error.message); }
         }
       }
     ]);
   }
+  
   async function handleGradeBet(winningOptionId: string) {
     setIsGrading(true);
     try {
-      await supabase.rpc('resolve_bet', { target_bet_id: selectedBet.id, winning_opt_id: winningOptionId });
-      setGradeModalVisible(false); fetchHostData(); 
-    } catch (error) { Alert.alert('Error', 'Failed to grade bet.'); } finally { setIsGrading(false); }
+      if (selectedBet.isP2P) {
+        // Determine if Side A or Side B won based on the ID clicked
+        const winnerSide = winningOptionId === 'A' ? 'A' : 'B';
+        
+        const { error } = await supabase.rpc('resolve_p2p_bet', { 
+          p_bet_id: selectedBet.id, 
+          p_winner_side: winnerSide 
+        });
+        
+        if (error) throw error;
+      } else {
+        // Standard House Bet logic
+        const { error } = await supabase.rpc('resolve_bet', { 
+          target_bet_id: selectedBet.id, 
+          winning_opt_id: winningOptionId 
+        });
+        
+        if (error) throw error;
+      }
+
+      setGradeModalVisible(false); 
+      fetchHostData(); 
+      Alert.alert('Success', 'Bet resolved and points distributed.');
+    } catch (error: any) { 
+      Alert.alert('Error', error.message || 'Failed to grade bet.'); 
+    } finally { 
+      setIsGrading(false); 
+    }
   }
 
-  if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
   // --- MANAGE CREW LOGIC ---
   async function handleElevateHost(targetUserId: string, targetName: string) {
-    Alert.alert(
-      'Elevate to Co-Host?',
-      `Are you sure you want to give ${targetName} the power to create and grade bets?`,
-      [
+    Alert.alert('Elevate to Co-Host?', `Make ${targetName} a Co-Host?`, [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Make Host', 
-          style: 'destructive',
-          onPress: async () => {
+        { text: 'Make Host', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('campaign_participants')
-                .update({ role: 'host' })
-                .eq('user_id', targetUserId)
-                .eq('campaign_id', activeCampaignId);
-
+              const { error } = await supabase.from('campaign_participants').update({ role: 'host' }).eq('user_id', targetUserId).eq('campaign_id', activeCampaignId);
               if (error) throw error;
-              
-              Alert.alert('Success', `${targetName} is now a Co-Host!`);
-              fetchHostData(); // Refresh the list
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
+              fetchHostData();
+            } catch (error: any) { Alert.alert('Error', error.message); }
           }
         }
       ]
     );
   }
+
   async function handleRevokeHost(targetUserId: string, targetName: string) {
-    Alert.alert(
-      'Revoke Co-Host?',
-      `Are you sure you want to remove ${targetName}'s host powers?`,
-      [
+    Alert.alert('Revoke Co-Host?', `Remove ${targetName}'s host powers?`, [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Revoke', 
-          style: 'destructive',
-          onPress: async () => {
+        { text: 'Revoke', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase
-                .from('campaign_participants')
-                .update({ role: 'guest' })
-                .eq('user_id', targetUserId)
-                .eq('campaign_id', activeCampaignId);
-
+              const { error } = await supabase.from('campaign_participants').update({ role: 'guest' }).eq('user_id', targetUserId).eq('campaign_id', activeCampaignId);
               if (error) throw error;
-              
-              Alert.alert('Demoted', `${targetName} is now a Guest.`);
-              fetchHostData(); // Refresh the list
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
+              fetchHostData();
+            } catch (error: any) { Alert.alert('Error', error.message); }
           }
         }
       ]
     );
   }
+
   async function handleCloseBoard() {
-    Alert.alert('Close Board Forever?', 'This will permanently end the game and lock all bets. This cannot be undone.', [
+    Alert.alert('Close Board Forever?', 'End game and lock all bets.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'End Event', style: 'destructive', onPress: async () => {
           try {
             await supabase.from('campaigns').update({ status: 'closed' }).eq('id', activeCampaignId);
-            // Once updated, the Host gets pushed to the final results
             navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
-          } catch (error: any) {
-            Alert.alert('Error', error.message);
-          }
+          } catch (error: any) { Alert.alert('Error', error.message); }
         }
       }
     ]);
   }
+
+  if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
+
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -307,31 +344,63 @@ export default function HostScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* --- INBOX: Guest Proposals --- */}
-      {proposals.length > 0 && (
-        <View style={styles.inboxContainer}>
-          <Text style={styles.inboxTitle}>📥 Guest Pitches ({proposals.length})</Text>
-          {proposals.map(prop => (
-            <View key={prop.id} style={styles.pitchCard}>
-              <Text style={styles.pitchText}>"{prop.suggestion}"</Text>
-              <Text style={styles.pitchAuthor}>- {prop.users.display_name}</Text>
-              <View style={styles.pitchActions}>
-                <TouchableOpacity onPress={() => convertProposalToBet(prop)}><Text style={styles.approveText}>Approve & Setup</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => rejectProposal(prop.id)}><Text style={styles.rejectText}>Trash</Text></TouchableOpacity>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {/* --- LIVE BETS TO GRADE & MANAGE CREW --- */}
-      <Text style={styles.sectionHeader}>Active Action (Needs Grading)</Text>
       <FlatList
         data={bets}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 50 }}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <View>
+            {/* --- INBOX 1: IDEAS --- */}
+            {proposals?.length > 0 && (
+              <View style={styles.inboxContainer}>
+                <Text style={styles.inboxTitle}>💡 Guest Ideas ({proposals.length})</Text>
+                {proposals?.map(prop => (
+                  <View key={prop.id} style={styles.ideaCard}>
+                    <Text style={styles.pitchText}>"{prop.suggestion}"</Text>
+                    <Text style={styles.pitchAuthor}>- {prop.users.display_name}</Text>
+                    <View style={styles.pitchActions}>
+                      <TouchableOpacity onPress={() => convertProposalToBet(prop)}><Text style={styles.approveText}>Approve & Setup</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => rejectProposal(prop.id)}><Text style={styles.rejectText}>Trash</Text></TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* --- INBOX 2: P2P CHALLENGES --- */}
+            {pendingPitches?.length > 0 && (
+              <View style={styles.queueContainer}>
+                <Text style={styles.inboxTitle}>🥊 Pending Challenges ({pendingPitches.length})</Text>
+                {pendingPitches?.map((pitch) => (
+                  <View key={pitch.id} style={styles.pitchCard}>
+                    <Text style={styles.pitchProposer}>Proposed by: {pitch.users?.display_name || 'Guest'}</Text>
+                    <Text style={styles.pitchQuestion}>{pitch.question}</Text>
+                    
+                    <View style={styles.pitchMathBox}>
+                      <Text style={styles.pitchMathText}>Side A (<Text style={{color: '#fff'}}>{pitch.option_a_label}</Text>): Risks {pitch.wager_amount} pts @ {pitch.multiplier}x</Text>
+                      <Text style={styles.pitchMathText}>Side B (<Text style={{color: '#fff'}}>{pitch.option_b_label}</Text>): Must Risk {pitch.challenger_cost} pts</Text>
+                      <Text style={styles.pitchPotText}>Total Pot: {pitch.total_pot} pts</Text>
+                    </View>
+
+                    <View style={styles.pitchActionRow}>
+                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderColor: '#ff4444' }]} onPress={() => handleRejectPitch(pitch.id)}>
+                        <Text style={[styles.pitchBtnText, { color: '#ff4444' }]}>Trash</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderColor: '#00D084' }]} onPress={() => handleApprovePitch(pitch.id)}>
+                        <Text style={[styles.pitchBtnText, { color: '#00D084' }]}>Approve to Board</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            <Text style={styles.sectionHeader}>Active Action (Needs Grading)</Text>
+          </View>
+        }
         ListEmptyComponent={<Text style={styles.emptyText}>No open bets right now.</Text>}
-        renderItem={({ item }) => (
+        renderItem={({ item }: { item: any }) => (
           <View style={[styles.betCard, item.status === 'graded' && { opacity: 0.6, borderColor: '#666' }]}>
             
             {/* Header & Status */}
@@ -371,7 +440,6 @@ export default function HostScreen({ navigation }: any) {
                 </TouchableOpacity>
               )}
 
-              {/* NEW TRASH BUTTON */}
               <TouchableOpacity 
                 style={[styles.actionBtnSecondary, { borderColor: '#ff4444' }]} 
                 onPress={() => handleDeleteBet(item.id)}
@@ -437,7 +505,6 @@ export default function HostScreen({ navigation }: any) {
               <TouchableOpacity onPress={() => setCreateModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
             </View>
 
-            {/* Type Selector */}
             <View style={styles.typeSelectorRow}>
               <TouchableOpacity style={[styles.typeBtn, betType === 'prop' && styles.typeBtnActive]} onPress={() => handleToggleBetType('prop')}>
                 <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>Props / Moneyline</Text>
@@ -449,33 +516,13 @@ export default function HostScreen({ navigation }: any) {
             
             <ScrollView style={{ maxHeight: 400 }}>
               <Text style={styles.label}>The Question</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} 
-                placeholderTextColor="#666" 
-                value={newQuestion} 
-                onChangeText={setNewQuestion} 
-              />
+              <TextInput style={styles.input} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
 
               <Text style={styles.label}>Options & Payouts</Text>
               {newOptions.map((opt) => (
                 <View key={opt.id} style={styles.optionRow}>
-                  <TextInput 
-                    style={[styles.input, { flex: 2, marginRight: 10, marginBottom: 0 }]} 
-                    placeholder="e.g., William" 
-                    placeholderTextColor="#666" 
-                    value={opt.label} 
-                    onChangeText={(text) => updateOption(opt.id, 'label', text)} 
-                    editable={betType !== 'over_under'} // Lock text if it's Over/Under
-                  />
-                  <TextInput 
-                    style={[styles.input, { flex: 1, marginBottom: 0 }]} 
-                    keyboardType="numeric" 
-                    placeholder="2.0" 
-                    placeholderTextColor="#666" 
-                    value={opt.odds} 
-                    onChangeText={(text) => updateOption(opt.id, 'odds', text)} 
-                  />
+                  <TextInput style={[styles.input, { flex: 2, marginRight: 10, marginBottom: 0 }]} placeholder="e.g., William" placeholderTextColor="#666" value={opt.label} onChangeText={(text) => updateOption(opt.id, 'label', text)} editable={betType !== 'over_under'} />
+                  <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updateOption(opt.id, 'odds', text)} />
                 </View>
               ))}
 
@@ -493,18 +540,47 @@ export default function HostScreen({ navigation }: any) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Grade Modal Remains the Same */}
+      {/* Grade Modal */}
       <Modal visible={gradeModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlayCenter}>
           <View style={styles.gradeModalContent}>
             <Text style={styles.modalTitle}>Who Won?</Text>
             <Text style={styles.modalSubtitle}>{selectedBet?.question}</Text>
-            {selectedBet?.bet_options.map((option: any) => (
-              <TouchableOpacity key={option.id} style={styles.winnerButton} onPress={() => handleGradeBet(option.id)} disabled={isGrading}>
-                <Text style={styles.winnerButtonText}>{isGrading ? 'Processing...' : `Winner: ${option.label}`}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setGradeModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+            
+            {selectedBet?.isP2P ? (
+              // --- P2P WINNER BUTTONS ---
+              <>
+                <TouchableOpacity 
+                  style={styles.winnerButton} 
+                  onPress={() => handleGradeBet('A')} 
+                  disabled={isGrading || !selectedBet.side_a_user_id}
+                >
+                  <Text style={styles.winnerButtonText}>
+                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.option_a_label}`}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.winnerButton} 
+                  onPress={() => handleGradeBet('B')} 
+                  disabled={isGrading || !selectedBet.side_b_user_id}
+                >
+                  <Text style={styles.winnerButtonText}>
+                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.option_b_label}`}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              // --- STANDARD BET WINNER BUTTONS ---
+              selectedBet?.bet_options?.map((option: any) => (
+                <TouchableOpacity key={option.id} style={styles.winnerButton} onPress={() => handleGradeBet(option.id)} disabled={isGrading}>
+                  <Text style={styles.winnerButtonText}>{isGrading ? 'Processing...' : `Winner: ${option.label}`}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+            
+            <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setGradeModalVisible(false)}>
+              <Text style={styles.closeText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -513,28 +589,36 @@ export default function HostScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  // ... Keep all your previous HostScreen styles, and add these new ones at the bottom:
   container: { flex: 1, backgroundColor: '#121212', padding: 20 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
   title: { fontSize: 32, fontWeight: 'bold', color: '#FFD700' },
   subtitle: { color: '#a0a0a0' },
   createButton: { backgroundColor: '#FFD700', paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 },
   createButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
-  sectionHeader: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  sectionHeader: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, marginTop: 10 },
   emptyText: { color: '#666', textAlign: 'center', marginTop: 20, marginBottom: 20 },
   betCard: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   betQuestion: { fontSize: 18, color: '#fff', fontWeight: 'bold', marginBottom: 10 },
-  actionText: { color: '#FFD700', fontWeight: 'bold' },
   
-  // INBOX STYLES
-  inboxContainer: { backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, marginBottom: 25, borderWidth: 1, borderColor: '#FFD700' },
-  inboxTitle: { color: '#FFD700', fontWeight: 'bold', fontSize: 16, marginBottom: 15 },
-  pitchCard: { backgroundColor: '#121212', padding: 15, borderRadius: 8, marginBottom: 10 },
+  // DUAL INBOX STYLES
+  inboxContainer: { marginBottom: 15, backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#00D084' },
+  queueContainer: { marginBottom: 25, backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#FFD700' },
+  inboxTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
+  ideaCard: { backgroundColor: '#121212', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#333' },
+  pitchCard: { backgroundColor: '#121212', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10 },
+  pitchProposer: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' },
+  pitchQuestion: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   pitchText: { color: '#fff', fontStyle: 'italic', fontSize: 16, marginBottom: 5 },
   pitchAuthor: { color: '#a0a0a0', fontSize: 14, marginBottom: 15 },
   pitchActions: { flexDirection: 'row', justifyContent: 'space-between' },
   approveText: { color: '#00D084', fontWeight: 'bold' },
   rejectText: { color: '#ff4444', fontWeight: 'bold' },
+  pitchMathBox: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444', marginBottom: 15 },
+  pitchMathText: { color: '#a0a0a0', fontSize: 14, marginBottom: 4 },
+  pitchPotText: { color: '#FFD700', fontSize: 14, fontWeight: 'bold', marginTop: 5 },
+  pitchActionRow: { flexDirection: 'row', gap: 10 },
+  pitchBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
+  pitchBtnText: { fontWeight: 'bold', fontSize: 14 },
 
   // MODAL & FORM STYLES
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4 },
@@ -559,6 +643,7 @@ const styles = StyleSheet.create({
   submitBtnText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
   winnerButton: { backgroundColor: '#00D084', padding: 15, borderRadius: 8, marginBottom: 15, alignItems: 'center' },
   winnerButtonText: { color: '#000', fontWeight: 'bold', fontSize: 18 },
+  
   // CREW STYLES
   crewContainer: { backgroundColor: '#1e1e1e', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 40 },
   crewCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#2a2a2a' },

@@ -26,39 +26,33 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [suggestModalVisible, setSuggestModalVisible] = useState(false);
+  const [pitchMode, setPitchMode] = useState<'idea' | 'challenge'>('idea'); // <-- NEW TOGGLE
   const [suggestionText, setSuggestionText] = useState('');
 
   const [myBetsModalVisible, setMyBetsModalVisible] = useState(false);
   const [myBets, setMyBets] = useState<any[]>([]);
+  const [p2pBets, setP2pBets] = useState<any[]>([]);
 
   // NEW: State for Tabs and Standings Data
   const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
   const [standings, setStandings] = useState<any[]>([]);
-
-  const [p2pModalVisible, setP2pModalVisible] = useState(false);
-  const [p2pWager, setP2pWager] = useState('100');
-  const [p2pMultiplier, setP2pMultiplier] = useState('1.0');
-  const [activeP2PBetId, setActiveP2PBetId] = useState<string | null>(null);
-  const [activeP2POption, setActiveP2POption] = useState<string>('');
 
   // NEW: State for the Room Code
   const [joinCode, setJoinCode] = useState<string>('');
 
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
-  // --- P2P CHALLENGE STATE ---
-  const [p2pModalVisible, setP2pModalVisible] = useState(false);
-  const [p2pWager, setP2pWager] = useState('100');
-  const [p2pMultiplier, setP2pMultiplier] = useState('1.0'); // Default to even money (1.0x)
-  
-  // To track which question and option they are challenging on:
-  const [activeP2PBetId, setActiveP2PBetId] = useState<string | null>(null);
-  const [activeP2POption, setActiveP2POption] = useState<string>('');
+  // NEW: Advanced Pitch States
+  const [pitchOptionA, setPitchOptionA] = useState('Yes');
+  const [pitchOptionB, setPitchOptionB] = useState('No');
+  const [pitchWager, setPitchWager] = useState('100');
+  const [pitchMultiplier, setPitchMultiplier] = useState('2.0');
 
   useEffect(() => {
     let walletSub: any;
     let betsSub: any;
     let campaignSub: any;
+    let p2pSub: any;
 
     async function setupRealtime() {
       const storedUserId = await AsyncStorage.getItem('userId');
@@ -113,6 +107,18 @@ export default function DashboardScreen({ route, navigation }: any) {
           }
         )
         .subscribe();
+
+      // 4. Listen for P2P Challenge Changes
+      p2pSub = supabase
+        .channel('public:p2p_dashboard')
+        .on(
+          'postgres_changes', 
+          { event: '*', schema: 'public', table: 'p2p_prop_bets' }, 
+          (payload) => {
+            loadBoard(); 
+          }
+        )
+        .subscribe();
     }
 
     loadBoard();
@@ -124,43 +130,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       if (campaignSub) supabase.removeChannel(campaignSub);
     };
   }, []);
-
-  async function handleSubmitP2PChallenge() {
-    const wagerAmount = parseFloat(p2pWager);
-    const multiplier = parseFloat(p2pMultiplier);
-
-    if (isNaN(wagerAmount) || wagerAmount <= 0) {
-      return Alert.alert('Invalid Wager', 'Please enter a valid amount to bet.');
-    }
-    if (isNaN(multiplier) || multiplier <= 0) {
-      return Alert.alert('Invalid Odds', 'Multiplier must be greater than 0.');
-    }
-    if (!activeP2PBetId || !activeP2POption) {
-      return Alert.alert('Error', 'Missing bet information.');
-    }
-
-    try {
-      const { data, error } = await supabase.rpc('create_p2p_challenge', {
-        p_campaign_id: campaignId,
-        p_bet_id: activeP2PBetId,
-        p_creator_id: userId,
-        p_creator_option: activeP2POption,
-        p_wager_amount: wagerAmount,
-        p_multiplier: multiplier
-      });
-
-      if (error) throw error;
-
-      Alert.alert('Challenge Created!', 'Your wager is in escrow waiting for a challenger.');
-      setP2pModalVisible(false);
-      
-      // Refresh the board to update their wallet balance and show the new challenge
-      loadBoard(); 
-
-    } catch (error: any) {
-      Alert.alert('Could not create challenge', error.message);
-    }
-  }
 
   async function copyToClipboard() {
     if (!joinCode) return;
@@ -222,6 +191,14 @@ export default function DashboardScreen({ route, navigation }: any) {
         .in('status', ['open', 'locked']); // <-- Now it pulls both!
 
       if (betsData) setBets(betsData);
+
+      const { data: p2pData } = await supabase
+        .from('p2p_prop_bets')
+        .select('*')
+        .eq('campaign_id', storedCampaignId)
+        .in('status', ['open', 'locked']);
+        
+      if (p2pData) setP2pBets(p2pData);
 
       // 4. Fetch ALL of this user's wagers for this event
       const { data: wagersData } = await supabase
@@ -369,18 +346,121 @@ function openBetSlip(bet: any, option?: any) {
     }
   }
 
-  async function submitSuggestion() {
-    if (!suggestionText.trim()) return Alert.alert('Error', 'Type an idea first!');
+  async function handleClaimP2P(betId: string, side: 'A' | 'B', cost: number) {
+    if (cost > walletBalance) {
+      const msg = 'You do not have enough points for this side.';
+      // Web fallback for basic alerts
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Insufficient Funds', msg);
+      }
+      return;
+    }
+
+    const title = 'Lock in Side?';
+    const message = `This will cost ${cost} pts.`;
+
+    // --- WEB WORKAROUND ---
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`${title}\n${message}`);
+      if (confirmed) {
+        executeClaim(betId, side, cost);
+      }
+    } 
+    // --- NATIVE MOBILE ---
+    else {
+      Alert.alert(title, message, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Lock It In', onPress: () => executeClaim(betId, side, cost) }
+      ]);
+    }
+  }
+
+  // Refactor the actual logic into a helper to avoid duplication
+  async function executeClaim(betId: string, side: 'A' | 'B', cost: number) {
+    setIsSubmitting(true);
     try {
-      await supabase.from('guest_proposals').insert([{
-        event_id: activeEvent.id,
-        user_id: userId,
-        suggestion: suggestionText
-      }]);
-      setSuggestionText('');
-      setSuggestModalVisible(false);
-      Alert.alert('Sent!', 'Your pitch was sent to the host.');
-    } catch (error) { Alert.alert('Error', 'Failed to send.'); }
+      const { error } = await supabase.rpc('claim_p2p_side', {
+        p_bet_id: betId, 
+        p_user_id: userId, 
+        p_side: side, 
+        p_cost: cost
+      });
+      if (error) throw error;
+      loadBoard();
+    } catch (err: any) {
+      if (Platform.OS === 'web') window.alert(err.message);
+      else Alert.alert('Error', err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function submitSuggestion() {
+    // --- MODE A: SIMPLE IDEA ---
+    if (pitchMode === 'idea') {
+      if (!suggestionText.trim()) return Alert.alert('Error', 'Type an idea first!');
+      setIsSubmitting(true);
+      try {
+        await supabase.from('guest_proposals').insert([{
+          event_id: activeEvent?.id,
+          user_id: userId,
+          suggestion: suggestionText,
+          status: 'pending'
+        }]);
+        setSuggestionText('');
+        setSuggestModalVisible(false);
+        Alert.alert('Sent!', 'Your idea was sent to the host.');
+      } catch (error: any) { 
+        Alert.alert('Error', error.message); 
+      } finally {
+        setIsSubmitting(false);
+      }
+    } 
+    // --- MODE B: P2P CHALLENGE ---
+    else {
+      if (!suggestionText.trim() || !pitchOptionA.trim() || !pitchOptionB.trim()) {
+        return Alert.alert('Error', 'Please fill out the scenario and both options.');
+      }
+      
+      const wagerAmt = parseFloat(pitchWager);
+      const multiAmt = parseFloat(pitchMultiplier);
+
+      if (isNaN(wagerAmt) || wagerAmt <= 0) return Alert.alert('Invalid', 'Wager must be > 0');
+      if (isNaN(multiAmt) || multiAmt <= 0) return Alert.alert('Invalid', 'Multiplier must be > 0');
+
+      setIsSubmitting(true);
+      try {
+        const { error } = await supabase.from('p2p_prop_bets').insert([{
+          campaign_id: campaignId,
+          proposer_id: userId,
+          question: suggestionText,
+          option_a_label: pitchOptionA,
+          option_b_label: pitchOptionB,
+          wager_amount: wagerAmt,
+          multiplier: multiAmt,
+          status: 'pending_approval' // Wait for the Host to greenlight it
+        }]);
+
+        if (error) throw error;
+
+        // Reset the form
+        setSuggestionText('');
+        setPitchOptionA('Yes');
+        setPitchOptionB('No');
+        setPitchWager('100');
+        setPitchMultiplier('2.0');
+        setPitchMode('idea'); // Reset to default mode
+        
+        setSuggestModalVisible(false);
+        Alert.alert('Sent!', 'Your challenge was sent to the host for approval.');
+      } catch (error: any) {
+        Alert.alert('Error', error.message);
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
   }
 
   async function handleSwitchEvent() {
@@ -412,7 +492,48 @@ function openBetSlip(bet: any, option?: any) {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
     const isOpen = item.status === 'open';
     const isLocked = item.status === 'locked';
+// --- P2P BET RENDERER ---
+    if (item.isP2P) {
+      const iClaimedA = item.side_a_user_id === userId;
+      const iClaimedB = item.side_b_user_id === userId;
+      
+      return (
+        <View style={[styles.betCard, { borderColor: '#FFD700', borderWidth: 2 }, isLocked && { opacity: 0.8 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+            <Text style={[styles.betQuestion, { flex: 1 }]}>{item.question}</Text>
+            <View style={{ backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
+              <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
+            </View>
+          </View>
+          
+          <View style={{ gap: 10 }}>
+            <TouchableOpacity 
+              style={[styles.optionButton, (item.side_a_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
+              disabled={!!item.side_a_user_id || isLocked || iClaimedB}
+              onPress={() => handleClaimP2P(item.id, 'A', item.wager_amount)}
+            >
+              <Text style={item.side_a_user_id ? { color: '#666', fontWeight: 'bold' } : styles.optionLabel}>
+                {item.side_a_user_id 
+                  ? (iClaimedA ? `✅ You locked ${item.option_a_label}` : `🔒 ${item.option_a_label} Claimed`) 
+                  : `Take ${item.option_a_label} (${item.wager_amount} pts)`}
+              </Text>
+            </TouchableOpacity>
 
+            <TouchableOpacity 
+              style={[styles.optionButton, (item.side_b_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
+              disabled={!!item.side_b_user_id || isLocked || iClaimedA}
+              onPress={() => handleClaimP2P(item.id, 'B', item.challenger_cost)}
+            >
+              <Text style={item.side_b_user_id ? { color: '#666', fontWeight: 'bold' } : styles.optionLabel}>
+                {item.side_b_user_id 
+                  ? (iClaimedB ? `✅ You locked ${item.option_b_label}` : `🔒 ${item.option_b_label} Claimed`) 
+                  : `Take ${item.option_b_label} (${item.challenger_cost} pts)`}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
     return (
       <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -550,7 +671,7 @@ function openBetSlip(bet: any, option?: any) {
       {activeTab === 'action' ? (
         <FlatList
           style={{ flex: 1 }}
-          data={bets}
+          data={[...p2pBets.map(b => ({ ...b, isP2P: true })), ...bets]}
           keyExtractor={(item) => item.id}
           renderItem={renderBetCard}
           contentContainerStyle={{ paddingBottom: 50 }}
@@ -664,27 +785,91 @@ function openBetSlip(bet: any, option?: any) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* --- PITCH AN IDEA MODAL --- */}
+      {/* --- UPGRADED DUAL-ENGINE PITCH MODAL --- */}
       <Modal visible={suggestModalVisible} transparent={true} animationType="fade">
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-          style={styles.modalOverlayCenter}
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlayCenter}>
           <View style={styles.gradeModalContent}>
-            <Text style={styles.modalTitle}>Pitch an Idea</Text>
             
-            <TextInput 
-              style={styles.pitchInput} 
-              placeholder="e.g., Will Chris go all-in blind?" 
-              placeholderTextColor="#666"
-              value={suggestionText} 
-              onChangeText={setSuggestionText} 
-              multiline={true}
-              autoFocus 
-            />
+            {/* DUAL TOGGLE */}
+            <View style={styles.typeSelectorRow}>
+              <TouchableOpacity 
+                style={[styles.typeBtn, pitchMode === 'idea' && styles.typeBtnActive]} 
+                onPress={() => setPitchMode('idea')}
+              >
+                <Text style={[styles.typeBtnText, pitchMode === 'idea' && styles.typeBtnTextActive]}>💡 Suggest Idea</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.typeBtn, pitchMode === 'challenge' && styles.typeBtnActive]} 
+                onPress={() => setPitchMode('challenge')}
+              >
+                <Text style={[styles.typeBtnText, pitchMode === 'challenge' && styles.typeBtnTextActive]}>🥊 Create Challenge</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalTitle}>
+              {pitchMode === 'idea' ? 'Pitch an Idea' : 'Set the Terms'}
+            </Text>
+
+            {pitchMode === 'idea' ? (
+              // --- IDEA UI ---
+              <TextInput 
+                style={[styles.pitchInput, { minHeight: 100 }]} 
+                placeholder="e.g., Will Chris go all-in blind?" 
+                placeholderTextColor="#666"
+                value={suggestionText} 
+                onChangeText={setSuggestionText} 
+                multiline={true}
+              />
+            ) : (
+              // --- CHALLENGE UI ---
+              <>
+                <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                <TextInput 
+                  style={[styles.pitchInput, { minHeight: 60, marginBottom: 15 }]} 
+                  placeholder="e.g., Will Chris spill his drink?" 
+                  placeholderTextColor="#666"
+                  value={suggestionText} 
+                  onChangeText={setSuggestionText} 
+                  multiline={true}
+                />
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text>
+                    <TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text>
+                    <TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" />
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk (Side A)</Text>
+                    <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={setPitchWager} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (Side A)</Text>
+                    <TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={setPitchMultiplier} />
+                  </View>
+                </View>
+
+                {/* REAL-TIME MATH DISPLAY */}
+                <View style={styles.mathBox}>
+                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{pitchWager || '0'} pts</Text></Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                    Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text>
+                  </Text>
+                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
+                    Total Pot: {((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts
+                  </Text>
+                </View>
+              </>
+            )}
             
-            <TouchableOpacity style={styles.confirmButton} onPress={submitSuggestion}>
-              <Text style={styles.confirmButtonText}>Send to Host</Text>
+            <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitSuggestion} disabled={isSubmitting}>
+              <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending...' : 'Send to Host'}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setSuggestModalVisible(false)}>
@@ -761,54 +946,6 @@ function openBetSlip(bet: any, option?: any) {
             />
             <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 10 }} onPress={() => setMyBetsModalVisible(false)}>
               <Text style={styles.closeSlipText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-      {/* --- P2P CUSTOM CHALLENGE MODAL --- */}
-      <Modal visible={p2pModalVisible} transparent={true} animationType="slide">
-        <View style={styles.centeredModalOverlay}>
-          <View style={styles.p2pModalContainer}>
-            <Text style={styles.shareModalTitle}>Issue a Challenge</Text>
-            <Text style={styles.shareModalSub}>Set your terms for: {activeP2POption}</Text>
-
-            <Text style={styles.inputLabel}>Your Wager (Points)</Text>
-            <TextInput
-              style={styles.p2pInput}
-              keyboardType="numeric"
-              value={p2pWager}
-              onChangeText={setP2pWager}
-              placeholder="e.g. 500"
-              placeholderTextColor="#666"
-            />
-
-            <Text style={styles.inputLabel}>Your Desired Odds (Multiplier)</Text>
-            <TextInput
-              style={styles.p2pInput}
-              keyboardType="decimal-pad"
-              value={p2pMultiplier}
-              onChangeText={setP2pMultiplier}
-              placeholder="e.g. 2.5"
-              placeholderTextColor="#666"
-            />
-
-            {/* REAL-TIME MATH DISPLAY */}
-            <View style={styles.mathBox}>
-              <Text style={styles.mathText}>You Risk: {p2pWager || '0'} pts</Text>
-              <Text style={styles.mathText}>
-                Challenger Must Risk: {((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)).toFixed(0)} pts
-              </Text>
-              <Text style={styles.potText}>
-                Total Pot: {((parseFloat(p2pWager) || 0) + ((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))).toFixed(0)} pts
-              </Text>
-            </View>
-
-            <TouchableOpacity style={styles.copyButton} onPress={handleSubmitP2PChallenge}>
-              <Text style={styles.copyButtonText}>Submit Challenge</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setP2pModalVisible(false)}>
-              <Text style={styles.closeModalText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1010,4 +1147,11 @@ const styles = StyleSheet.create({
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
   mathText: { color: '#a0a0a0', fontSize: 14, marginBottom: 4 },
   potText: { color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 },
-});
+  p2pChallengeBtnText: { color: '#FFD700', fontWeight: 'bold', fontSize: 12 },
+  // --- NEW MODAL STYLES ---
+  typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4, borderWidth: 1, borderColor: '#333' },
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
+  typeBtnActive: { backgroundColor: '#FFD700' },
+  typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
+  typeBtnTextActive: { color: '#000' },
+  });
