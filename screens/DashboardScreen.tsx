@@ -360,7 +360,7 @@ export default function DashboardScreen({ route, navigation }: any) {
   const blindBase = selectedMatchup?.base_amount || 100;
   const myBlindBid = parseFloat(blindBid) || 2.0;
   const riskIfFav = blindBase;
-  const riskIfDog = Math.floor((blindBase * myBlindBid) - blindBase);
+  const riskIfDog = Math.trunc((blindBase * myBlindBid) - blindBase);
 
   const renderBetCard = ({ item }: { item: any }) => {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
@@ -399,9 +399,9 @@ export default function DashboardScreen({ route, navigation }: any) {
                   const isA = item.side_a_user_id === userId;
                   const oppId = isA ? item.side_b_user_id : item.side_a_user_id;
                   const oppName = getPlayerName(oppId);
-                  const myWager = isA ? item.base_amount : Math.floor((item.base_amount * item.final_multiplier) - item.base_amount);
+                  const myWager = isA ? item.base_amount : Math.trunc((item.base_amount * item.final_multiplier) - item.base_amount);
                   const myPick = isA ? item.side_a_label : item.side_b_label;
-                  const pot = Math.floor(item.base_amount * item.final_multiplier);
+                  const pot = Math.trunc(item.base_amount * item.final_multiplier);
 
                   return (
                     <>
@@ -415,8 +415,8 @@ export default function DashboardScreen({ route, navigation }: any) {
                           <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{myWager} pts</Text></Text>
                         </View>
                         <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
-                          <Text style={{ color: '#BB86FC', fontWeight: 'bold', fontSize: 16 }}>
-                            Payout: {pot} pts
+                          <Text style={[styles.lockedDetails, { color: '#FFD700', fontWeight: 'bold', fontSize: 16 }]}>
+                            Payout: {Math.trunc(item.total_pot)} pts
                           </Text>
                         </View>
                       </View>
@@ -811,9 +811,9 @@ export default function DashboardScreen({ route, navigation }: any) {
                   <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (Side A)</Text><TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={setPitchMultiplier} /></View>
                 </View>
                 <View style={styles.mathBox}>
-                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{pitchWager || '0'} pts</Text></Text>
-                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text></Text>
-                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts</Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(pitchWager) || 0)} pts</Text></Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{Math.trunc((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text></Text>
+                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {Math.trunc((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts</Text>
                 </View>
               </>
             )}

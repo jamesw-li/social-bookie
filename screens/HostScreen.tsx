@@ -649,19 +649,50 @@ export default function HostScreen({ navigation }: any) {
                   </View>
 
                   <View style={[styles.mathBox, { borderColor: '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)' }]}>
-                    <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>How this Blind Auction works:</Text>
-                    
-                    <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
-                      You are placing a hidden bid on <Text style={{color: '#fff', fontWeight: 'bold'}}>{p2pOptionA || 'Team A'}</Text>.
-                      If the challenger bids LOWER than your {blindMultiplier || '0'}x, THEY get {p2pOptionA || 'Team A'} and YOU get pushed onto <Text style={{color: '#fff', fontWeight: 'bold'}}>{p2pOptionB || 'Team B'}</Text>. 
-                      If they bid HIGHER, you keep {p2pOptionA || 'Team A'}.
-                    </Text>
+  <Text style={{ color: '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+    How Your Bid Shapes the Market
+  </Text>
+  
+  <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
+    You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+  </Text>
 
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 4 }}>Risk if you keep {p2pOptionA || 'Team A'}: <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindBase || '0'} pts</Text></Text>
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 4 }}>Risk if you get {p2pOptionB || 'Team B'}: <Text style={{color: '#fff', fontWeight: 'bold'}}>~{((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0)} pts*</Text></Text>
-                    
-                    <Text style={{ color: '#666', fontSize: 10, fontStyle: 'italic', marginTop: 10 }}>*Final risk depends on the challenger's averaged odds.</Text>
-                  </View>
+  {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
+  <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
+    <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
+      Scenario A: You secure {p2pOptionA || 'Team A'}
+    </Text>
+    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+      • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
+    </Text>
+    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+      • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
+    </Text>
+    <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
+      • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
+    </Text>
+  </View>
+
+  {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
+  <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+    <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>
+      Scenario B: You are pushed to {p2pOptionB || 'Team B'}
+    </Text>
+    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+      • You Risk: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0)) - (parseFloat(blindBase) || 0))} pts</Text>
+    </Text>
+    <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+      • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{Math.trunc(parseFloat(blindBase) || 0)} pts</Text>
+    </Text>
+    <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>
+      • Total Payout: {Math.trunc((parseFloat(blindBase) || 0) * (parseFloat(blindMultiplier) || 0))} pts
+    </Text>
+  </View>
+
+  <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
+    *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+  </Text>
+</View>
                 </>
               ) : betType === 'p2p' ? (
                 // --- P2P CHALLENGE UI ---
@@ -680,9 +711,17 @@ export default function HostScreen({ navigation }: any) {
                   </View>
 
                   <View style={styles.mathBox}>
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{p2pWager || '0'} pts</Text></Text>
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)).toFixed(0)} pts</Text></Text>
-                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {((parseFloat(p2pWager) || 0) + ((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))).toFixed(0)} pts</Text>
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                      Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(p2pWager) || 0)} pts</Text>
+                    </Text>
+                    
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                      Side B Must Risk: <Text style={{color: '#fff'}}>{Math.trunc((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))} pts</Text>
+                    </Text>
+                    
+                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
+                      Total Pot: {Math.trunc((parseFloat(p2pWager) || 0) + ((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)))} pts
+                    </Text>
                   </View>
                 </>
               ) : (
