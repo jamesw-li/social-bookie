@@ -37,6 +37,11 @@ export default function HostScreen({ navigation }: any) {
     { id: 2, label: '', odds: '1.5' }
   ]);
 
+  const [p2pOptionA, setP2pOptionA] = useState('Yes');
+  const [p2pOptionB, setP2pOptionB] = useState('No');
+  const [p2pWager, setP2pWager] = useState('100');
+  const [p2pMultiplier, setP2pMultiplier] = useState('2.0');
+
   useEffect(() => {
     fetchHostData();
 
@@ -157,7 +162,7 @@ export default function HostScreen({ navigation }: any) {
     setBetType(type);
     if (type === 'over_under') {
       setNewOptions([{ id: 1, label: 'Over', odds: '1.9' }, { id: 2, label: 'Under', odds: '1.9' }]);
-    } else {
+    } else if (type === 'prop') {
       setNewOptions([{ id: 1, label: '', odds: '2.0' }, { id: 2, label: '', odds: '1.5' }]);
     }
   }
@@ -172,6 +177,38 @@ export default function HostScreen({ navigation }: any) {
   }
 
   async function handlePublishBet() {
+    // --- P2P PUBLISH LOGIC ---
+    if (betType === 'p2p') {
+      if (!newQuestion.trim() || !p2pOptionA.trim() || !p2pOptionB.trim()) return Alert.alert('Hold up', 'Fill out all fields.');
+      
+      const wagerAmt = parseFloat(p2pWager);
+      const multiAmt = parseFloat(p2pMultiplier);
+      if (isNaN(wagerAmt) || wagerAmt <= 0) return Alert.alert('Invalid', 'Wager must be > 0');
+      if (isNaN(multiAmt) || multiAmt <= 0) return Alert.alert('Invalid', 'Multiplier must be > 0');
+
+      setIsCreating(true);
+      try {
+        const { error } = await supabase.from('p2p_prop_bets').insert([{
+          campaign_id: activeCampaignId,
+          proposer_id: currentUserId, // Host is the proposer
+          question: newQuestion,
+          option_a_label: p2pOptionA,
+          option_b_label: p2pOptionB,
+          wager_amount: wagerAmt,
+          multiplier: multiAmt,
+          status: 'open' // Immediately live, no approval needed
+        }]);
+
+        if (error) throw error;
+        
+        setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setP2pWager('100'); setP2pMultiplier('2.0');
+        setCreateModalVisible(false);
+        fetchHostData();
+      } catch (error: any) { Alert.alert('Error', error.message); } finally { setIsCreating(false); }
+      return;
+    }
+
+    // --- STANDARD HOUSE BET PUBLISH LOGIC ---
     if (!newQuestion.trim()) return Alert.alert('Hold up', 'You need a question!');
     const validOptions = newOptions.filter(opt => opt.label.trim() !== '');
     if (validOptions.length < 2) return Alert.alert('Hold up', 'You need at least two options.');
@@ -191,34 +228,41 @@ export default function HostScreen({ navigation }: any) {
 
       await supabase.from('bet_options').insert(optionsToInsert);
 
-      // --- THE FIX: Mark the tracked proposal as approved ---
       if (activeProposalId) {
         await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', activeProposalId);
       }
 
-      setNewQuestion('');
-      setActiveProposalId(null); // <-- Reset it so it doesn't accidentally clear the next bet!
-      handleToggleBetType('prop'); 
-      setCreateModalVisible(false);
-      fetchHostData(); 
-
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setIsCreating(false);
-    }
+      setNewQuestion(''); setActiveProposalId(null); handleToggleBetType('prop'); 
+      setCreateModalVisible(false); fetchHostData(); 
+    } catch (error: any) { Alert.alert('Error', error.message); } finally { setIsCreating(false); }
   }
 
   // --- BET MANAGEMENT ACTIONS ---
-  function openGradeModal(bet: any) { setSelectedBet(bet); setGradeModalVisible(true); }
+  function openGradeModal(bet: any) { 
+    // Prevent grading half-empty P2P bets
+    if (bet.isP2P && (!bet.side_a_user_id || !bet.side_b_user_id)) {
+      const msg = 'Both sides of this Prop Challenge must be claimed before it can be graded.\n\nYou can Re-Open it to allow claims, or Trash it to refund the lone player.';
+      if (Platform.OS === 'web') return window.alert(`Cannot Grade\n\n${msg}`);
+      return Alert.alert('Cannot Grade', msg);
+    }
+
+    setSelectedBet(bet); 
+    setGradeModalVisible(true); 
+  }
   
   async function toggleBetStatus(betId: string, newStatus: string) {
-    // Find the bet in our local state to see if it's P2P
     const targetBet = bets.find(b => b.id === betId);
-    const table = targetBet?.isP2P ? 'p2p_prop_bets' : 'bets';
 
     try {
-      await supabase.from(table).update({ status: newStatus }).eq('id', betId);
+      if (targetBet?.isP2P && newStatus === 'open') {
+        // P2P Re-Open: Refund points and completely wipe the claimed slots
+        const { error } = await supabase.rpc('reset_p2p_bet', { p_bet_id: betId });
+        if (error) throw error;
+      } else {
+        // Standard House Bet toggle OR Locking a P2P bet
+        const table = targetBet?.isP2P ? 'p2p_prop_bets' : 'bets';
+        await supabase.from(table).update({ status: newStatus }).eq('id', betId);
+      }
       fetchHostData(); 
     } catch (error: any) { 
       Alert.alert('Error', error.message); 
@@ -226,12 +270,21 @@ export default function HostScreen({ navigation }: any) {
   }
 
   async function handleDeleteBet(betId: string) {
+    const targetBet = bets.find(b => b.id === betId);
+
     Alert.alert('Trash & Refund Bet?', 'Permanently delete and refund points?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete & Refund', style: 'destructive', onPress: async () => {
             try {
-              const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
-              if (error) throw error;
+              if (targetBet?.isP2P) {
+                // Delete a Prop Challenge
+                const { error } = await supabase.rpc('delete_p2p_bet_and_refund', { p_bet_id: betId });
+                if (error) throw error;
+              } else {
+                // Delete a House Bet
+                const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
+                if (error) throw error;
+              }
               fetchHostData(); 
             } catch (error: any) { Alert.alert('Error', error.message); }
           }
@@ -318,16 +371,38 @@ export default function HostScreen({ navigation }: any) {
   }
 
   async function handleCloseBoard() {
-    Alert.alert('Close Board Forever?', 'End game and lock all bets.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'End Event', style: 'destructive', onPress: async () => {
-          try {
-            await supabase.from('campaigns').update({ status: 'closed' }).eq('id', activeCampaignId);
-            navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
-          } catch (error: any) { Alert.alert('Error', error.message); }
-        }
+    const title = 'Close Board Forever?';
+    const msg = 'End game and lock the board. Any ungraded bets (Prop or House) will be fully refunded.';
+
+    // --- WEB WORKAROUND ---
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) {
+        executeClose();
       }
-    ]);
+    } 
+    // --- NATIVE MOBILE ---
+    else {
+      Alert.alert(title, msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'End Event', style: 'destructive', onPress: executeClose }
+      ]);
+    }
+  }
+
+  async function executeClose() {
+    try {
+      // Call the new sweeping RPC instead of just a basic status update
+      const { error } = await supabase.rpc('close_board_and_refund', { 
+        p_campaign_id: activeCampaignId 
+      });
+      
+      if (error) throw error;
+      
+      // Kick host to the podium
+      navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
+    } catch (error: any) { 
+      Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+    }
   }
 
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
@@ -507,29 +582,60 @@ export default function HostScreen({ navigation }: any) {
 
             <View style={styles.typeSelectorRow}>
               <TouchableOpacity style={[styles.typeBtn, betType === 'prop' && styles.typeBtnActive]} onPress={() => handleToggleBetType('prop')}>
-                <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>Props / Moneyline</Text>
+                <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>House Props</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.typeBtn, betType === 'over_under' && styles.typeBtnActive]} onPress={() => handleToggleBetType('over_under')}>
                 <Text style={[styles.typeBtnText, betType === 'over_under' && styles.typeBtnTextActive]}>Over/Under</Text>
               </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeBtn, betType === 'p2p' && styles.typeBtnActive]} onPress={() => handleToggleBetType('p2p')}>
+                <Text style={[styles.typeBtnText, betType === 'p2p' && styles.typeBtnTextActive]}>P2P Challenge</Text>
+              </TouchableOpacity>
             </View>
             
-            <ScrollView style={{ maxHeight: 400 }}>
-              <Text style={styles.label}>The Question</Text>
-              <TextInput style={styles.input} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+              
+              {betType === 'p2p' ? (
+                // --- P2P CHALLENGE UI ---
+                <>
+                  <Text style={styles.label}>The Scenario</Text>
+                  <TextInput style={styles.input} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
 
-              <Text style={styles.label}>Options & Payouts</Text>
-              {newOptions.map((opt) => (
-                <View key={opt.id} style={styles.optionRow}>
-                  <TextInput style={[styles.input, { flex: 2, marginRight: 10, marginBottom: 0 }]} placeholder="e.g., William" placeholderTextColor="#666" value={opt.label} onChangeText={(text) => updateOption(opt.id, 'label', text)} editable={betType !== 'over_under'} />
-                  <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updateOption(opt.id, 'odds', text)} />
-                </View>
-              ))}
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Option A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Option B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="No" placeholderTextColor="#666" /></View>
+                  </View>
 
-              {betType === 'prop' && (
-                <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}>
-                  <Text style={styles.addOptionText}>+ Add Another Option</Text>
-                </TouchableOpacity>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Risk (Side A)</Text><TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={setP2pWager} /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Odds (Side A)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={setP2pMultiplier} /></View>
+                  </View>
+
+                  <View style={styles.mathBox}>
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{p2pWager || '0'} pts</Text></Text>
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)).toFixed(0)} pts</Text></Text>
+                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {((parseFloat(p2pWager) || 0) + ((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))).toFixed(0)} pts</Text>
+                  </View>
+                </>
+              ) : (
+                // --- STANDARD HOUSE BET UI ---
+                <>
+                  <Text style={styles.label}>The Question</Text>
+                  <TextInput style={styles.input} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+
+                  <Text style={styles.label}>Options & Payouts</Text>
+                  {newOptions.map((opt) => (
+                    <View key={opt.id} style={styles.optionRow}>
+                      <TextInput style={[styles.input, { flex: 2, marginRight: 10, marginBottom: 0 }]} placeholder="e.g., William" placeholderTextColor="#666" value={opt.label} onChangeText={(text) => updateOption(opt.id, 'label', text)} editable={betType !== 'over_under'} />
+                      <TextInput style={[styles.input, { flex: 1, marginBottom: 0 }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updateOption(opt.id, 'odds', text)} />
+                    </View>
+                  ))}
+
+                  {betType === 'prop' && (
+                    <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}>
+                      <Text style={styles.addOptionText}>+ Add Another Option</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </ScrollView>
 
@@ -659,5 +765,6 @@ const styles = StyleSheet.create({
   actionBtnSecondary: { backgroundColor: '#2a2a2a', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#FFD700' }, 
   actionBtnTextSecondary: { color: '#FFD700', fontWeight: 'bold' }, 
   actionBtnDanger: { backgroundColor: '#ff4444', padding: 10, borderRadius: 6 }, 
-  actionBtnTextDanger: { color: '#fff', fontWeight: 'bold' }
+  actionBtnTextDanger: { color: '#fff', fontWeight: 'bold' },
+  mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
 });

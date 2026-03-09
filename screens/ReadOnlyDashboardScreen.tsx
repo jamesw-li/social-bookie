@@ -8,6 +8,7 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'podium' | 'receipts'>('podium');
   
+  const [userId, setUserId] = useState<string | null>(null);
   const [standings, setStandings] = useState<any[]>([]);
   const [receipts, setReceipts] = useState<any[]>([]);
 
@@ -18,41 +19,62 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
   async function fetchArchiveData() {
     try {
       const campId = await AsyncStorage.getItem('campaignId');
-      const userId = await AsyncStorage.getItem('userId');
-      if (!campId || !userId) return;
+      const storedUserId = await AsyncStorage.getItem('userId');
+      
+      if (!campId || !storedUserId) return;
+      setUserId(storedUserId);
 
-      // 1. Fetch Final Standings
+      // 1. Fetch Final Standings (FIX: Added user_id so we can look up opponents!)
       const { data: standingsData } = await supabase
         .from('campaign_participants')
-        .select('global_point_balance, users(display_name)')
+        .select('user_id, global_point_balance, users(display_name)')
         .eq('campaign_id', campId)
         .order('global_point_balance', { ascending: false });
 
       if (standingsData) setStandings(standingsData);
 
-      // 2. Fetch the specific event ID
+      // 2. Fetch P2P Prop Bets
+      const { data: p2pData } = await supabase
+        .from('p2p_prop_bets')
+        .select('*')
+        .eq('campaign_id', campId);
+
+      const p2pReceipts = (p2pData || [])
+        .filter(b => String(b.side_a_user_id) === String(storedUserId) || String(b.side_b_user_id) === String(storedUserId))
+        .map(b => ({ ...b, type: 'p2p' }));
+
+      // 3. Fetch specific event ID for House Bets
       const { data: eventData } = await supabase
         .from('events').select('id').eq('campaign_id', campId).single();
 
+      let houseReceipts: any[] = [];
       if (eventData) {
-        // 3. Fetch User's Wagers & strictly filter for this event
+        // 4. Fetch User's House Wagers
         const { data: wagerData } = await supabase
           .from('wagers')
           .select(`
-            id,
-            points_risked,
-            status,
+            id, points_risked, status, created_at,
             bet_options ( label, multiplier ), 
             bets ( question, event_id )
           `)
-          .eq('user_id', userId);
+          .eq('user_id', storedUserId);
           
         if (wagerData) {
-          // Look directly at the bets object
-          const eventWagers = wagerData.filter((w: any) => w.bets?.event_id === eventData.id);
-          setReceipts(eventWagers.reverse()); 
+          houseReceipts = wagerData
+            .filter((w: any) => w.bets?.event_id === eventData.id)
+            .map((w: any) => ({ ...w, type: 'house' }));
         }
       }
+
+      // Merge and Sort by Newest
+      const combinedReceipts = [...p2pReceipts, ...houseReceipts].sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setReceipts(combinedReceipts);
+
     } catch (error) {
       console.error("Error fetching archive:", error);
     } finally {
@@ -96,7 +118,7 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
       {activeTab === 'podium' ? (
         <FlatList
           data={standings}
-          keyExtractor={(_, index) => index.toString()}
+          keyExtractor={(item) => item.user_id}
           contentContainerStyle={{ paddingBottom: 20 }}
           renderItem={({ item, index }) => {
             let rankStyle: any = styles.rankText;
@@ -120,35 +142,88 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
       ) : (
         <FlatList
           data={receipts}
-          keyExtractor={(_, index) => index.toString()}
+          keyExtractor={(item, index) => item.id ? `${item.type}-${item.id}` : index.toString()}
           contentContainerStyle={{ paddingBottom: 20 }}
           ListEmptyComponent={<Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No bets placed during this event.</Text>}
           renderItem={({ item }) => {
-                const odds = item.bet_options?.multiplier || 1;
-                const payout = Math.floor(item.points_risked * odds);
+            const isP2P = item.type === 'p2p';
+            let wagerStatus = item.status || 'pending'; 
+            let question, pick, odds, wagerAmt, potentialWin, opponentName;
 
-                return (
-                  <View style={styles.receiptCard}>
-                    <Text style={styles.receiptQuestion}>{item.bets?.question || 'Unknown Bet'}</Text>
-                    
-                    <View style={styles.receiptDetailsRow}>
-                      <Text style={styles.receiptPick}>Pick: {item.bet_options?.label}</Text>
-                      <Text style={styles.receiptOdds}>Odds: {odds}x</Text>
-                    </View>
+            if (isP2P) {
+              const isSideA = String(item.side_a_user_id) === String(userId);
+              
+              // --- THE LOOKUP FIX ---
+              const opponentId = isSideA ? item.side_b_user_id : item.side_a_user_id;
+              if (opponentId) {
+                const opponentProfile = standings.find(s => String(s.user_id) === String(opponentId));
+                opponentName = opponentProfile?.users?.display_name || 'Unknown Player';
+              } else {
+                opponentName = 'No Opponent (Refunded)';
+              }
 
-                    <View style={styles.receiptDetailsRow}>
-                      <Text style={styles.receiptAmount}>Risked: {item.points_risked} pts</Text>
-                      {item.status === 'pending' && <Text style={styles.receiptToWin}>To Win: {payout} pts</Text>}
-                      {item.status === 'won' && <Text style={styles.receiptWon}>Paid: {payout} pts</Text>}
-                      {item.status === 'lost' && <Text style={styles.receiptLost}>Lost: {item.points_risked} pts</Text>}
-                    </View>
+              question = item.question;
+              pick = isSideA ? item.option_a_label : item.option_b_label;
+              odds = isSideA 
+                ? Number(item.multiplier).toFixed(2) 
+                : (item.challenger_cost > 0 ? (Number(item.total_pot) / Number(item.challenger_cost)).toFixed(2) : '1.00');
+              wagerAmt = isSideA ? item.wager_amount : item.challenger_cost;
+              potentialWin = item.total_pot;
+            } else {
+              question = item.bets?.question || 'Unknown Bet';
+              pick = item.bet_options?.label || 'Unknown Pick';
+              odds = item.bet_options?.multiplier || 1;
+              wagerAmt = item.points_risked || 0;
+              potentialWin = Math.floor(wagerAmt * odds);
+            }
 
-                    <View style={[styles.statusBadge, item.status === 'won' ? styles.badgeWon : item.status === 'lost' ? styles.badgeLost : styles.badgePending]}>
-                      <Text style={styles.statusText}>{item.status.toUpperCase()}</Text>
-                    </View>
+            let statusText = '🟡 PENDING';
+            let statusColor = '#FFD700';
+            let statusBg = 'rgba(255, 215, 0, 0.2)';
+
+            // For P2P, we just show RESOLVED since we don't store individual win/loss in that table
+            if (wagerStatus === 'won' || (isP2P && wagerStatus === 'resolved')) {
+              statusText = '🟢 ' + (isP2P ? 'RESOLVED' : 'WON');
+              statusColor = '#00D084';
+              statusBg = 'rgba(0, 208, 132, 0.2)';
+            } else if (wagerStatus === 'lost') {
+              statusText = '🔴 LOST';
+              statusColor = '#ff4444';
+              statusBg = 'rgba(255, 68, 68, 0.2)';
+            }
+
+            return (
+              <View style={[styles.receiptCard, { borderColor: statusColor }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
+                    {/* --- RENDER OPPONENT NAME HERE --- */}
+                    {isP2P && <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🥊 P2P VS. {opponentName?.toUpperCase()}</Text>}
+                    <Text style={styles.receiptQuestion}>{question}</Text>
                   </View>
-                );
-              }}
+                  <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor, borderWidth: 1 }]}>
+                    <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.receiptAmount}>Pick: <Text style={styles.receiptPick}>{pick}</Text></Text>
+                    <Text style={styles.receiptAmount}>Odds: <Text style={styles.receiptOdds}>{odds}x</Text></Text>
+                  </View>
+                  
+                  <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <Text style={styles.receiptAmount}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{wagerAmt} pts</Text></Text>
+                    <Text style={[
+                      statusColor === '#FFD700' ? styles.receiptToWin : (statusColor === '#00D084' ? styles.receiptWon : styles.receiptLost),
+                      { marginTop: 4 }
+                    ]}>
+                      {statusColor === '#00D084' ? `Payout: ${potentialWin} pts` : `Win: ${potentialWin} pts`}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          }}
         />
       )}
     </View>
@@ -178,9 +253,9 @@ const styles = StyleSheet.create({
   receiptCard: { backgroundColor: '#1e1e1e', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   receiptQuestion: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   receiptDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  receiptPick: { color: '#FFD700', fontSize: 14 },
+  receiptPick: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
   receiptAmount: { color: '#a0a0a0', fontSize: 14 },
-  statusBadge: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, height: 22, justifyContent: 'center' },
   badgeWon: { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderWidth: 1, borderColor: '#00D084' },
   badgeLost: { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderWidth: 1, borderColor: '#ff4444' },
   badgePending: { backgroundColor: 'rgba(255, 215, 0, 0.2)', borderWidth: 1, borderColor: '#FFD700' },

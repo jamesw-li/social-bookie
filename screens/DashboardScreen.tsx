@@ -16,7 +16,6 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [bets, setBets] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<string>('guest');
   
-  // NEW: Track the user's existing wagers
   const [myWagers, setMyWagers] = useState<any[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -26,23 +25,19 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [suggestModalVisible, setSuggestModalVisible] = useState(false);
-  const [pitchMode, setPitchMode] = useState<'idea' | 'challenge'>('idea'); // <-- NEW TOGGLE
+  const [pitchMode, setPitchMode] = useState<'idea' | 'challenge'>('idea'); 
   const [suggestionText, setSuggestionText] = useState('');
 
   const [myBetsModalVisible, setMyBetsModalVisible] = useState(false);
   const [myBets, setMyBets] = useState<any[]>([]);
   const [p2pBets, setP2pBets] = useState<any[]>([]);
 
-  // NEW: State for Tabs and Standings Data
   const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
   const [standings, setStandings] = useState<any[]>([]);
 
-  // NEW: State for the Room Code
   const [joinCode, setJoinCode] = useState<string>('');
-
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
-  // NEW: Advanced Pitch States
   const [pitchOptionA, setPitchOptionA] = useState('Yes');
   const [pitchOptionB, setPitchOptionB] = useState('No');
   const [pitchWager, setPitchWager] = useState('100');
@@ -56,9 +51,8 @@ export default function DashboardScreen({ route, navigation }: any) {
 
     async function setupRealtime() {
       const storedUserId = await AsyncStorage.getItem('userId');
-      const storedCampaignId = await AsyncStorage.getItem('campaignId'); // <-- Add this
+      const storedCampaignId = await AsyncStorage.getItem('campaignId'); 
 
-      // 1. Listen for YOUR Wallet Changes Only
       walletSub = supabase
         .channel('public:campaign_participants_dashboard')
         .on(
@@ -69,54 +63,43 @@ export default function DashboardScreen({ route, navigation }: any) {
             table: 'campaign_participants',
             filter: `user_id=eq.${storedUserId}` 
           }, 
-          (payload) => {
-            loadBoard(); 
-          }
+          () => loadBoard() 
         )
         .subscribe();
 
-      // 2. Listen for ALL Bet Changes
       betsSub = supabase
         .channel('public:bets_dashboard')
         .on(
           'postgres_changes', 
           { event: '*', schema: 'public', table: 'bets' }, 
-          (payload) => {
-            loadBoard(); 
-          }
+          () => loadBoard() 
         )
         .subscribe();
 
-      // 3. Listen for THIS Campaign's closure
       campaignSub = supabase
-        .channel(`campaign_status_${storedCampaignId}`) // <-- Unique channel name
+        .channel(`campaign_status_${storedCampaignId}`) 
         .on(
           'postgres_changes', 
           { 
             event: 'UPDATE', 
             schema: 'public', 
             table: 'campaigns',
-            filter: `id=eq.${storedCampaignId}` // <-- Strictly listen to this board
+            filter: `id=eq.${storedCampaignId}` 
           }, 
           (payload) => {
-            console.log('Campaign Update:', payload);
             if (payload.new.status === 'closed') {
-               // The Host ended it! Kick them to the podium.
                navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
             }
           }
         )
         .subscribe();
 
-      // 4. Listen for P2P Challenge Changes
       p2pSub = supabase
         .channel('public:p2p_dashboard')
         .on(
           'postgres_changes', 
           { event: '*', schema: 'public', table: 'p2p_prop_bets' }, 
-          (payload) => {
-            loadBoard(); 
-          }
+          () => loadBoard() 
         )
         .subscribe();
     }
@@ -128,6 +111,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       if (walletSub) supabase.removeChannel(walletSub);
       if (betsSub) supabase.removeChannel(betsSub);
       if (campaignSub) supabase.removeChannel(campaignSub);
+      if (p2pSub) supabase.removeChannel(p2pSub); // Fixed cleanup
     };
   }, []);
 
@@ -135,11 +119,10 @@ export default function DashboardScreen({ route, navigation }: any) {
     if (!joinCode) return;
     await Clipboard.setStringAsync(joinCode);
     Alert.alert('Copied!', 'Room code copied to clipboard. Send it to your friends!');
-    setShareModalVisible(false); // Closes the modal after copying
+    setShareModalVisible(false); 
   }
 
   async function loadBoard() {
-    setLoading(true);
     try {
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
@@ -148,18 +131,23 @@ export default function DashboardScreen({ route, navigation }: any) {
       
       setUserId(storedUserId);
       setCampaignId(storedCampaignId);
-      // NEW: Fetch the Room Code
+      
+      // NEW: Fetch the Room Code AND Status
       const { data: campaignData } = await supabase
         .from('campaigns')
-        .select('join_code')
+        .select('join_code, status') // <-- Add status here
         .eq('id', storedCampaignId)
         .single();
         
-      if (campaignData?.join_code) {
-        setJoinCode(campaignData.join_code);
+      // --- THE REDIRECT FIX ---
+      if (campaignData?.status === 'closed') {
+        setLoading(false);
+        // Instantly kick them to the final results screen if they refresh a closed board
+        return navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
       }
 
-      // 1. Fetch Wallet & Role
+      if (campaignData?.join_code) setJoinCode(campaignData.join_code);
+
       const { data: participantData } = await supabase
         .from('campaign_participants')
         .select('global_point_balance, role')
@@ -172,7 +160,6 @@ export default function DashboardScreen({ route, navigation }: any) {
         setUserRole(participantData.role);
       }
 
-      // 2. Fetch Live Event
       const { data: eventData } = await supabase
         .from('events')
         .select('*')
@@ -183,12 +170,11 @@ export default function DashboardScreen({ route, navigation }: any) {
       if (!eventData) return setLoading(false);
       setActiveEvent(eventData);
 
-      // 3. Fetch Active & Locked Bets
       const { data: betsData } = await supabase
         .from('bets')
         .select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
         .eq('event_id', eventData.id)
-        .in('status', ['open', 'locked']); // <-- Now it pulls both!
+        .in('status', ['open', 'locked']);
 
       if (betsData) setBets(betsData);
 
@@ -196,76 +182,59 @@ export default function DashboardScreen({ route, navigation }: any) {
         .from('p2p_prop_bets')
         .select('*')
         .eq('campaign_id', storedCampaignId)
-        .in('status', ['open', 'locked']);
+        .in('status', ['open', 'locked', 'resolved']);
         
       if (p2pData) setP2pBets(p2pData);
 
-      // 4. Fetch ALL of this user's wagers for this event
       const { data: wagersData } = await supabase
         .from('wagers')
         .select(`
-          id,
-          bet_id,
-          points_risked,
-          status,
+          id, bet_id, points_risked, status, created_at,
           bet_options!wagers_option_id_fkey ( label, multiplier ),
           bets ( question, event_id ) 
         `)
         .eq('user_id', storedUserId);
 
       if (wagersData) {
-        // Look directly at the bets object now, not inside bet_options
         const eventWagers = wagersData.filter((w: any) => w.bets?.event_id === eventData.id);
-        
-        // Feed your existing board UI 
         setMyWagers(eventWagers.filter((w: any) => w.status === 'pending'));
-        
-        // Feed the new My Bets Modal
         setMyBets(eventWagers.reverse());
       }
       
-      // 5. Fetch Standings for the Leaderboard Tab
       const { data: standingsData } = await supabase
         .from('campaign_participants')
         .select('user_id, global_point_balance, users(display_name)')
         .eq('campaign_id', storedCampaignId)
-        .order('global_point_balance', { ascending: false }); // Highest points at the top!
+        .order('global_point_balance', { ascending: false }); 
 
       if (standingsData) setStandings(standingsData);
 
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      console.error(error.message);
     } finally {
       setLoading(false);
     }
   }
 
-function openBetSlip(bet: any, option?: any) {
+  function openBetSlip(bet: any, option?: any) {
     const cleanBetId = String(bet.id).toLowerCase().trim();
-    const existingWager = myWagers.find((w: any) => 
-      String(w.bet_id).toLowerCase().trim() === cleanBetId
-    );
+    const existingWager = myWagers.find((w: any) => String(w.bet_id).toLowerCase().trim() === cleanBetId);
 
-    // 1. Check if the bet is locked FIRST to prevent refunds on locked action
     if (bet.status === 'locked') {
       const lockMsg = 'The host has locked betting for this action. No more changes allowed.';
-      if (Platform.OS === 'web') {
-        return window.alert(`Board Locked 🔒\n${lockMsg}`);
-      }
+      if (Platform.OS === 'web') return window.alert(`Board Locked 🔒\n${lockMsg}`);
       return Alert.alert('Board Locked 🔒', lockMsg);
     }
 
-    // 2. Only allow refund if the bet is NOT locked
     if (existingWager) {
       if (Platform.OS === 'web') {
-        const confirmRefund = window.confirm(
-          'You already have action on this bet. Want to cancel your ticket, refund your points, and pick again?'
-        );
+        const confirmRefund = window.confirm('You already have action on this bet. Want to cancel your ticket, refund your points, and pick again?');
         if (confirmRefund) {
           (async () => {
             try {
               await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
               window.alert('Refunded! Your points have been returned.');
+              loadBoard();
             } catch (error: any) {
               window.alert(`Error: ${error.message}`);
             }
@@ -282,6 +251,7 @@ function openBetSlip(bet: any, option?: any) {
           { text: 'Refund & Edit', style: 'destructive', onPress: async () => {
               try {
                 await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
+                loadBoard();
               } catch (error: any) {
                 Alert.alert('Error', error.message);
               }
@@ -292,7 +262,6 @@ function openBetSlip(bet: any, option?: any) {
       return;
     }
 
-    // 3. Open normal slip for new bets
     setSelectedBet(bet);
     setWagerAmount('');
     setSelectedOption(option || null);
@@ -318,7 +287,6 @@ function openBetSlip(bet: any, option?: any) {
           status: 'pending'
         }]);
 
-      // If the database unique constraint blocks it, we catch it here!
       if (wagerError) throw wagerError;
 
       const newBalance = walletBalance - pointsToRisk;
@@ -330,12 +298,9 @@ function openBetSlip(bet: any, option?: any) {
 
       setWalletBalance(newBalance);
       setModalVisible(false);
-      
-      // Refresh the board so the UI updates to show their new locked wager
       loadBoard(); 
 
     } catch (error: any) {
-      // Friendly error if they somehow bypassed the UI to double-bet
       if (error.code === '23505') {
         Alert.alert('Hold Up', 'You already placed a wager on this bet!');
       } else {
@@ -349,27 +314,17 @@ function openBetSlip(bet: any, option?: any) {
   async function handleClaimP2P(betId: string, side: 'A' | 'B', cost: number) {
     if (cost > walletBalance) {
       const msg = 'You do not have enough points for this side.';
-      // Web fallback for basic alerts
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Insufficient Funds', msg);
-      }
-      return;
+      if (Platform.OS === 'web') return window.alert(msg);
+      return Alert.alert('Insufficient Funds', msg);
     }
 
     const title = 'Lock in Side?';
     const message = `This will cost ${cost} pts.`;
 
-    // --- WEB WORKAROUND ---
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(`${title}\n${message}`);
-      if (confirmed) {
-        executeClaim(betId, side, cost);
-      }
-    } 
-    // --- NATIVE MOBILE ---
-    else {
+      if (confirmed) executeClaim(betId, side, cost);
+    } else {
       Alert.alert(title, message, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Lock It In', onPress: () => executeClaim(betId, side, cost) }
@@ -377,9 +332,25 @@ function openBetSlip(bet: any, option?: any) {
     }
   }
 
-  // Refactor the actual logic into a helper to avoid duplication
   async function executeClaim(betId: string, side: 'A' | 'B', cost: number) {
     setIsSubmitting(true);
+
+    // --- ⚡ OPTIMISTIC UI UPDATE (INSTANT REFRESH) ---
+    setP2pBets(prev => prev.map(bet => {
+      if (bet.id === betId) {
+        return {
+          ...bet,
+          side_a_user_id: side === 'A' ? userId : bet.side_a_user_id,
+          side_b_user_id: side === 'B' ? userId : bet.side_b_user_id,
+          // If the other side is already claimed, instantly lock it locally
+          status: (side === 'A' && bet.side_b_user_id) || (side === 'B' && bet.side_a_user_id) ? 'locked' : bet.status
+        };
+      }
+      return bet;
+    }));
+    setWalletBalance(prev => prev - cost);
+    // ------------------------------------------------
+
     try {
       const { error } = await supabase.rpc('claim_p2p_side', {
         p_bet_id: betId, 
@@ -388,17 +359,19 @@ function openBetSlip(bet: any, option?: any) {
         p_cost: cost
       });
       if (error) throw error;
-      loadBoard();
+      
+      loadBoard(); // Silently pull the confirmed data in the background
     } catch (err: any) {
       if (Platform.OS === 'web') window.alert(err.message);
       else Alert.alert('Error', err.message);
+      
+      loadBoard(); // If it failed (e.g., someone else claimed it a millisecond before you), revert the UI
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function submitSuggestion() {
-    // --- MODE A: SIMPLE IDEA ---
     if (pitchMode === 'idea') {
       if (!suggestionText.trim()) return Alert.alert('Error', 'Type an idea first!');
       setIsSubmitting(true);
@@ -418,7 +391,6 @@ function openBetSlip(bet: any, option?: any) {
         setIsSubmitting(false);
       }
     } 
-    // --- MODE B: P2P CHALLENGE ---
     else {
       if (!suggestionText.trim() || !pitchOptionA.trim() || !pitchOptionB.trim()) {
         return Alert.alert('Error', 'Please fill out the scenario and both options.');
@@ -440,18 +412,17 @@ function openBetSlip(bet: any, option?: any) {
           option_b_label: pitchOptionB,
           wager_amount: wagerAmt,
           multiplier: multiAmt,
-          status: 'pending_approval' // Wait for the Host to greenlight it
+          status: 'pending_approval' 
         }]);
 
         if (error) throw error;
 
-        // Reset the form
         setSuggestionText('');
         setPitchOptionA('Yes');
         setPitchOptionB('No');
         setPitchWager('100');
         setPitchMultiplier('2.0');
-        setPitchMode('idea'); // Reset to default mode
+        setPitchMode('idea'); 
         
         setSuggestModalVisible(false);
         Alert.alert('Sent!', 'Your challenge was sent to the host for approval.');
@@ -465,21 +436,15 @@ function openBetSlip(bet: any, option?: any) {
 
   async function handleSwitchEvent() {
     try {
-      // 1. Grab the user data directly from the device memory
       const savedUserId = await AsyncStorage.getItem('userId');
       const savedUserName = await AsyncStorage.getItem('userName');
       
-      // 2. Clear out the active campaign data so they leave the board
       await AsyncStorage.removeItem('campaignId');
       await AsyncStorage.removeItem('campaignName');
       
-      // 3. Instantly reset navigation back to the Campaigns list
       navigation.reset({ 
         index: 0, 
-        routes: [{ 
-          name: 'Campaigns', 
-          params: { userId: savedUserId, userName: savedUserName } 
-        }] 
+        routes: [{ name: 'Campaigns', params: { userId: savedUserId, userName: savedUserName } }] 
       });
     } catch (error) {
       console.error("Error switching events:", error);
@@ -488,14 +453,21 @@ function openBetSlip(bet: any, option?: any) {
 
   const potentialWin = wagerAmount ? Math.floor(parseInt(wagerAmount) * (selectedOption?.multiplier || 1)) : 0;
 
- const renderBetCard = ({ item }: { item: any }) => {
+  const renderBetCard = ({ item }: { item: any }) => {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
     const isOpen = item.status === 'open';
     const isLocked = item.status === 'locked';
-// --- P2P BET RENDERER ---
+
+    // --- P2P BET RENDERER ---
     if (item.isP2P) {
       const iClaimedA = item.side_a_user_id === userId;
       const iClaimedB = item.side_b_user_id === userId;
+
+      // Helper function to find the user's name from our Standings data
+      const getPlayerName = (uid: string) => {
+        const player = standings.find(s => s.user_id === uid);
+        return player?.users?.display_name || 'Someone';
+      };
       
       return (
         <View style={[styles.betCard, { borderColor: '#FFD700', borderWidth: 2 }, isLocked && { opacity: 0.8 }]}>
@@ -506,34 +478,82 @@ function openBetSlip(bet: any, option?: any) {
             </View>
           </View>
           
-          <View style={{ gap: 10 }}>
+          {/* --- SIDE-BY-SIDE BUTTONS --- */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            
+            {/* SIDE A */}
             <TouchableOpacity 
-              style={[styles.optionButton, (item.side_a_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
+              style={[
+                styles.optionButton, 
+                { flex: 1, paddingVertical: 12 }, 
+                (item.side_a_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }
+              ]}
               disabled={!!item.side_a_user_id || isLocked || iClaimedB}
               onPress={() => handleClaimP2P(item.id, 'A', item.wager_amount)}
             >
-              <Text style={item.side_a_user_id ? { color: '#666', fontWeight: 'bold' } : styles.optionLabel}>
+              {/* Top Text: Status or Label */}
+              <Text style={item.side_a_user_id ? { color: '#666', fontWeight: 'bold', textAlign: 'center' } : [styles.optionLabel, { textAlign: 'center' }]}>
                 {item.side_a_user_id 
-                  ? (iClaimedA ? `✅ You locked ${item.option_a_label}` : `🔒 ${item.option_a_label} Claimed`) 
-                  : `Take ${item.option_a_label} (${item.wager_amount} pts)`}
+                  ? (iClaimedA ? `✅ You locked` : `🔒 ${getPlayerName(item.side_a_user_id)} locked`) 
+                  : item.option_a_label}
               </Text>
+              
+              {/* Bottom Text: Odds & Cost (If Open) */}
+              {!item.side_a_user_id && (
+                <View style={{ alignItems: 'center', marginTop: 4 }}>
+                  <Text style={styles.optionOdds}>{Number(item.multiplier).toFixed(2)}x</Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 10, marginTop: 4 }}>{item.wager_amount} pts</Text>
+                </View>
+              )}
+
+              {/* Bottom Text: What they picked (If Locked) */}
+              {item.side_a_user_id && (
+                <Text style={{ color: iClaimedA ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}>
+                  {item.option_a_label}
+                </Text>
+              )}
             </TouchableOpacity>
 
+            {/* SIDE B */}
             <TouchableOpacity 
-              style={[styles.optionButton, (item.side_b_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
+              style={[
+                styles.optionButton, 
+                { flex: 1, paddingVertical: 12 }, 
+                (item.side_b_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }
+              ]}
               disabled={!!item.side_b_user_id || isLocked || iClaimedA}
               onPress={() => handleClaimP2P(item.id, 'B', item.challenger_cost)}
             >
-              <Text style={item.side_b_user_id ? { color: '#666', fontWeight: 'bold' } : styles.optionLabel}>
+              {/* Top Text: Status or Label */}
+              <Text style={item.side_b_user_id ? { color: '#666', fontWeight: 'bold', textAlign: 'center' } : [styles.optionLabel, { textAlign: 'center' }]}>
                 {item.side_b_user_id 
-                  ? (iClaimedB ? `✅ You locked ${item.option_b_label}` : `🔒 ${item.option_b_label} Claimed`) 
-                  : `Take ${item.option_b_label} (${item.challenger_cost} pts)`}
+                  ? (iClaimedB ? `✅ You locked` : `🔒 ${getPlayerName(item.side_b_user_id)} locked`) 
+                  : item.option_b_label}
               </Text>
+              
+              {/* Bottom Text: Calculated Odds & Cost (If Open) */}
+              {!item.side_b_user_id && (
+                <View style={{ alignItems: 'center', marginTop: 4 }}>
+                  <Text style={styles.optionOdds}>
+                    {item.challenger_cost > 0 ? (Number(item.total_pot) / Number(item.challenger_cost)).toFixed(2) : '1.00'}x
+                  </Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 10, marginTop: 4 }}>{item.challenger_cost} pts</Text>
+                </View>
+              )}
+
+              {/* Bottom Text: What they picked (If Locked) */}
+              {item.side_b_user_id && (
+                <Text style={{ color: iClaimedB ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}>
+                  {item.option_b_label}
+                </Text>
+              )}
             </TouchableOpacity>
+
           </View>
         </View>
       );
     }
+    
     return (
       <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -552,48 +572,29 @@ function openBetSlip(bet: any, option?: any) {
           <TouchableOpacity 
             style={[styles.lockedWagerCard, isLocked && { borderColor: '#666' }]} 
             onPress={() => openBetSlip(item)}
-            disabled={isLocked} // Visual feedback: can't tap if locked
+            disabled={isLocked}
           >
-            {/* Top Row: Status and Edit Prompt */}
             <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={styles.lockedText}>
-                {isLocked ? '🔒 Ticket Locked' : '✅ Ticket Placed'}
-              </Text>
-              {isOpen && (
-                <Text style={{color: '#00D084', fontSize: 12, fontStyle: 'italic'}}>
-                  Tap to Edit
-                </Text>
-              )}
+              <Text style={styles.lockedText}>{isLocked ? '🔒 Ticket Locked' : '✅ Ticket Placed'}</Text>
+              {isOpen && <Text style={{color: '#00D084', fontSize: 12, fontStyle: 'italic'}}>Tap to Edit</Text>}
             </View>
             
-            {/* Bottom Row: 2-Column Data Layout */}
             <View style={{ marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
-              
-              {/* Left Column: Pick & Odds */}
               <View style={{ flex: 1 }}>
-                <Text style={styles.lockedDetails}>
-                  Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.bet_options.label}</Text>
-                </Text>
-                <Text style={styles.lockedDetails}>
-                  Odds: <Text style={{color: '#00D084', fontWeight: 'bold'}}>{existingWager.bet_options.multiplier}x</Text>
-                </Text>
+                <Text style={styles.lockedDetails}>Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.bet_options?.label}</Text></Text>
+                <Text style={styles.lockedDetails}>Odds: <Text style={{color: '#00D084', fontWeight: 'bold'}}>{existingWager.bet_options?.multiplier}x</Text></Text>
               </View>
-
-              {/* Right Column: Wager & Potential Win */}
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.lockedDetails}>
-                  Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.points_risked} pts</Text>
-                </Text>
+                <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.points_risked} pts</Text></Text>
                 <Text style={[styles.lockedDetails, { color: '#00D084', fontWeight: 'bold' }]}>
-                  Win: {Math.floor(existingWager.points_risked * existingWager.bet_options.multiplier)} pts
+                  Win: {Math.floor(existingWager.points_risked * (existingWager.bet_options?.multiplier || 1))} pts
                 </Text>
               </View>
-
             </View>
           </TouchableOpacity>
         ) : (
           <View style={styles.optionsRow}>
-            {item.bet_options.map((option: any) => (
+            {item.bet_options?.map((option: any) => (
               <TouchableOpacity 
                 key={option.id} 
                 style={[styles.optionButton, isLocked && { opacity: 0.5 }]}
@@ -612,17 +613,41 @@ function openBetSlip(bet: any, option?: any) {
 
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#00D084" /></View>;
 
+  // Combine lists for My Live Tickets Modal
+  const combinedTickets = [
+    ...p2pBets
+      .filter(b => String(b.side_a_user_id) === String(userId) || String(b.side_b_user_id) === String(userId))
+      .map(b => ({ ...b, type: 'p2p' })),
+    ...myBets.map(w => ({ ...w, type: 'house' }))
+  ].sort((a, b) => {
+    // 1. Primary Sort: Status (Pending tickets float to the top)
+    const getWeight = (status: string) => {
+      if (status === 'won' || status === 'lost' || status === 'resolved') return 2;
+      return 1; 
+    };
+
+    const weightA = getWeight(a.status || 'pending');
+    const weightB = getWeight(b.status || 'pending');
+
+    if (weightA !== weightB) {
+      return weightA - weightB; // Sorts Active (1) above Finished (2)
+    }
+
+    // 2. Secondary Sort: Timestamp (Newest tickets first)
+    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    
+    return dateB - dateA; // Descending order
+  });
+
   return (
     <View style={styles.container}>
-      {/* --- UPGRADED HEADER --- */}
+      {/* --- HEADER --- */}
       <View style={styles.headerContainer}>
-        
-        {/* Top Nav Row */}
         <View style={styles.topNavRow}>
           <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
             <Text style={styles.navPillLeaveText}>← Leave</Text>
           </TouchableOpacity>
-          
           <View style={styles.rightNavGroup}>
             {joinCode ? (
               <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}>
@@ -632,7 +657,6 @@ function openBetSlip(bet: any, option?: any) {
             <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}>
               <Text style={styles.navPillMyBetsText}>🧾 My Bets</Text>
             </TouchableOpacity>
-            
             {userRole === 'host' && (
               <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
                 <Text style={styles.navPillHostText}>👑 Host</Text>
@@ -641,8 +665,6 @@ function openBetSlip(bet: any, option?: any) {
           </View>
         </View>
 
-        {/* Main Action Header (Mirrors Host View) */}
-        {/* --- DYNAMIC HEADER --- */}
         {activeTab === 'action' ? (
           <View style={styles.mainHeaderRow}>
             <View style={{ flex: 1, paddingRight: 10 }}>
@@ -650,7 +672,6 @@ function openBetSlip(bet: any, option?: any) {
               <Text style={styles.subtitle}>{activeEvent ? `Live: ${activeEvent.name}` : 'Waiting for host...'}</Text>
               <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
             </View>
-            
             <TouchableOpacity style={styles.pitchButton} onPress={() => setSuggestModalVisible(true)}>
               <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
             </TouchableOpacity>
@@ -664,14 +685,19 @@ function openBetSlip(bet: any, option?: any) {
             </View>
           </View>
         )}
-
       </View>
 
-      {/* --- DYNAMIC MAIN CONTENT (STRICT EITHER / OR) --- */}
+      {/* --- CONTENT AREA --- */}
       {activeTab === 'action' ? (
         <FlatList
           style={{ flex: 1 }}
-          data={[...p2pBets.map(b => ({ ...b, isP2P: true })), ...bets]}
+          // --- FIX: Filter out 'resolved' P2P bets from the main board ---
+          data={[
+            ...p2pBets
+              .filter(b => b.status === 'open' || b.status === 'locked')
+              .map(b => ({ ...b, isP2P: true })), 
+            ...bets
+          ]}
           keyExtractor={(item) => item.id}
           renderItem={renderBetCard}
           contentContainerStyle={{ paddingBottom: 50 }}
@@ -709,9 +735,9 @@ function openBetSlip(bet: any, option?: any) {
           }}
         />
       )}
-      {/* --- BOTTOM NAVIGATION BAR --- */}
+
+      {/* --- BOTTOM NAV --- */}
       <View style={styles.bottomNavBar}>
-        {/* The Action Tab */}
         <TouchableOpacity 
           style={activeTab === 'action' ? styles.bottomNavBtnActive : styles.bottomNavBtn}
           onPress={() => setActiveTab('action')}
@@ -719,8 +745,6 @@ function openBetSlip(bet: any, option?: any) {
           <Text style={{ fontSize: 20 }}>🎲</Text>
           <Text style={activeTab === 'action' ? styles.bottomNavTextActive : styles.bottomNavText}>The Action</Text>
         </TouchableOpacity>
-        
-        {/* Standings Tab */}
         <TouchableOpacity 
           style={activeTab === 'standings' ? styles.bottomNavBtnActive : styles.bottomNavBtn} 
           onPress={() => setActiveTab('standings')}
@@ -729,28 +753,26 @@ function openBetSlip(bet: any, option?: any) {
           <Text style={activeTab === 'standings' ? styles.bottomNavTextActive : styles.bottomNavText}>Standings</Text>
         </TouchableOpacity>
       </View>
-      {/* --- SHARE MODAL --- */}
+
+      {/* --- MODALS --- */}
       <Modal visible={shareModalVisible} transparent={true} animationType="fade">
         <View style={styles.centeredModalOverlay}>
           <View style={styles.shareModalContainer}>
             <Text style={styles.shareModalTitle}>Invite Players</Text>
             <Text style={styles.shareModalSub}>Give this code to your friends so they can join the action.</Text>
-
             <View style={styles.codeDisplayBox}>
               <Text style={styles.hugeCodeText}>{joinCode}</Text>
             </View>
-
             <TouchableOpacity style={styles.copyButton} onPress={copyToClipboard}>
               <Text style={styles.copyButtonText}>📋 Copy Code</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShareModalVisible(false)}>
               <Text style={styles.closeModalText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-      {/* Bet Slip Modal remains unchanged */}
+
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.betSlipContainer}>
@@ -758,7 +780,6 @@ function openBetSlip(bet: any, option?: any) {
               <Text style={styles.slipTitle}>Bet Slip</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
             </View>
-
             {selectedBet && selectedOption && (
               <View style={styles.slipDetails}>
                 <Text style={styles.slipQuestion}>{selectedBet.question}</Text>
@@ -768,142 +789,112 @@ function openBetSlip(bet: any, option?: any) {
                 </View>
               </View>
             )}
-
             <View style={styles.wagerInputRow}>
               <Text style={styles.wagerLabel}>Risk:</Text>
               <TextInput style={styles.wagerInput} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={wagerAmount} onChangeText={setWagerAmount} autoFocus />
             </View>
-
             <View style={styles.payoutRow}>
               <Text style={styles.payoutLabel}>To Win:</Text>
               <Text style={styles.payoutAmount}>{isNaN(potentialWin) ? 0 : potentialWin} pts</Text>
             </View>
-
             <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitWager} disabled={isSubmitting}>
               <Text style={styles.confirmButtonText}>{isSubmitting ? 'Processing...' : 'Lock It In'}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      {/* --- UPGRADED DUAL-ENGINE PITCH MODAL --- */}
+
       <Modal visible={suggestModalVisible} transparent={true} animationType="fade">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlayCenter}>
           <View style={styles.gradeModalContent}>
-            
-            {/* DUAL TOGGLE */}
             <View style={styles.typeSelectorRow}>
-              <TouchableOpacity 
-                style={[styles.typeBtn, pitchMode === 'idea' && styles.typeBtnActive]} 
-                onPress={() => setPitchMode('idea')}
-              >
+              <TouchableOpacity style={[styles.typeBtn, pitchMode === 'idea' && styles.typeBtnActive]} onPress={() => setPitchMode('idea')}>
                 <Text style={[styles.typeBtnText, pitchMode === 'idea' && styles.typeBtnTextActive]}>💡 Suggest Idea</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.typeBtn, pitchMode === 'challenge' && styles.typeBtnActive]} 
-                onPress={() => setPitchMode('challenge')}
-              >
+              <TouchableOpacity style={[styles.typeBtn, pitchMode === 'challenge' && styles.typeBtnActive]} onPress={() => setPitchMode('challenge')}>
                 <Text style={[styles.typeBtnText, pitchMode === 'challenge' && styles.typeBtnTextActive]}>🥊 Create Challenge</Text>
               </TouchableOpacity>
             </View>
-
-            <Text style={styles.modalTitle}>
-              {pitchMode === 'idea' ? 'Pitch an Idea' : 'Set the Terms'}
-            </Text>
-
+            <Text style={styles.modalTitle}>{pitchMode === 'idea' ? 'Pitch an Idea' : 'Set the Terms'}</Text>
             {pitchMode === 'idea' ? (
-              // --- IDEA UI ---
-              <TextInput 
-                style={[styles.pitchInput, { minHeight: 100 }]} 
-                placeholder="e.g., Will Chris go all-in blind?" 
-                placeholderTextColor="#666"
-                value={suggestionText} 
-                onChangeText={setSuggestionText} 
-                multiline={true}
-              />
+              <TextInput style={[styles.pitchInput, { minHeight: 100 }]} placeholder="e.g., Will Chris go all-in blind?" placeholderTextColor="#666" value={suggestionText} onChangeText={setSuggestionText} multiline={true} />
             ) : (
-              // --- CHALLENGE UI ---
               <>
                 <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                <TextInput 
-                  style={[styles.pitchInput, { minHeight: 60, marginBottom: 15 }]} 
-                  placeholder="e.g., Will Chris spill his drink?" 
-                  placeholderTextColor="#666"
-                  value={suggestionText} 
-                  onChangeText={setSuggestionText} 
-                  multiline={true}
-                />
-
+                <TextInput style={[styles.pitchInput, { minHeight: 60, marginBottom: 15 }]} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={suggestionText} onChangeText={setSuggestionText} multiline={true} />
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text>
-                    <TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text>
-                    <TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" />
-                  </View>
+                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
                 </View>
-
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk (Side A)</Text>
-                    <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={setPitchWager} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (Side A)</Text>
-                    <TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={setPitchMultiplier} />
-                  </View>
+                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk (Side A)</Text><TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={setPitchWager} /></View>
+                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (Side A)</Text><TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={setPitchMultiplier} /></View>
                 </View>
-
-                {/* REAL-TIME MATH DISPLAY */}
                 <View style={styles.mathBox}>
                   <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{pitchWager || '0'} pts</Text></Text>
-                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
-                    Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text>
-                  </Text>
-                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
-                    Total Pot: {((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts
-                  </Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text></Text>
+                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts</Text>
                 </View>
               </>
             )}
-            
             <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitSuggestion} disabled={isSubmitting}>
               <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending...' : 'Send to Host'}</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setSuggestModalVisible(false)}>
-              <Text style={styles.closeSlipText}>Cancel</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setSuggestModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
       {/* --- MY BETS (LIVE RECEIPTS) MODAL --- */}
       <Modal visible={myBetsModalVisible} transparent={true} animationType="slide">
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.gradeModalContent, { maxHeight: '80%', width: '100%' }]}>
             <Text style={styles.modalTitle}>My Live Tickets</Text>
-            
             <FlatList
-              data={myBets}
-              keyExtractor={(item) => item.id.toString()}
+              data={combinedTickets}
+              keyExtractor={(item, index) => item.id ? `${item.type}-${item.id}` : index.toString()}
               ListEmptyComponent={<Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No bets placed yet. Get in the action!</Text>}
               renderItem={({ item }) => {
-                // Map the nested wager data correctly from Supabase
-                const wagerStatus = item.status || 'pending'; 
-                const question = item.bets?.question || 'Unknown Bet';
-                const pick = item.bet_options?.label || 'Unknown Pick';
-                const odds = item.bet_options?.multiplier || 1;
-                const wagerAmount = item.points_risked || 0;
-                const potentialWin = Math.floor(wagerAmount * odds);
+                const isP2P = item.type === 'p2p';
+                let wagerStatus = item.status || 'pending'; 
+                let question, pick, odds, wagerAmt, potentialWin, opponentName;
 
-                // Dynamic coloring based on ticket status
+                if (isP2P) {
+                  const isSideA = String(item.side_a_user_id) === String(userId);
+
+                  // --- NEW: Find Opponent Name ---
+                  const opponentId = isSideA ? item.side_b_user_id : item.side_a_user_id;
+                  if (opponentId) {
+                    const opponentProfile = standings.find(s => String(s.user_id) === String(opponentId));
+                    opponentName = opponentProfile?.users?.display_name || 'Unknown Player';
+                  } else {
+                    opponentName = 'Waiting for opponent...';
+                  }
+
+                  question = item.question;
+                  pick = isSideA ? item.option_a_label : item.option_b_label;
+                  
+                  // --- Calculate actual odds depending on the side taken ---
+                  odds = isSideA 
+                    ? Number(item.multiplier).toFixed(2) 
+                    : (item.challenger_cost > 0 ? (Number(item.total_pot) / Number(item.challenger_cost)).toFixed(2) : '1.00');
+                  
+                  wagerAmt = isSideA ? item.wager_amount : item.challenger_cost;
+                  potentialWin = item.total_pot;
+                } else {
+                  question = item.bets?.question || 'Unknown Bet';
+                  pick = item.bet_options?.label || 'Unknown Pick';
+                  odds = item.bet_options?.multiplier || 1;
+                  wagerAmt = item.points_risked || 0;
+                  potentialWin = Math.floor(wagerAmt * odds);
+                }
+
                 let statusText = '🟡 PENDING';
                 let statusColor = '#FFD700';
                 let statusBg = 'rgba(255, 215, 0, 0.2)';
 
-                if (wagerStatus === 'won') {
-                  statusText = '🟢 WON';
+                if (wagerStatus === 'won' || (isP2P && wagerStatus === 'resolved')) {
+                  statusText = '🟢 ' + (isP2P ? 'RESOLVED' : 'WON');
                   statusColor = '#00D084';
                   statusBg = 'rgba(0, 208, 132, 0.2)';
                 } else if (wagerStatus === 'lost') {
@@ -913,30 +904,28 @@ function openBetSlip(bet: any, option?: any) {
                 }
 
                 return (
-                  <View style={[styles.receiptCard, { borderColor: statusColor, opacity: wagerStatus === 'pending' ? 1 : 0.6 }]}>
-                    
-                    {/* Header: Question & Status Badge */}
+                  <View style={[styles.receiptCard, { borderColor: statusColor, opacity: wagerStatus === 'pending' || wagerStatus === 'open' || wagerStatus === 'locked' ? 1 : 0.6 }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <Text style={[styles.receiptQuestion, { flex: 1, paddingRight: 10 }]}>{question}</Text>
+                      <View style={{ flex: 1, paddingRight: 10 }}>
+                        {isP2P && <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🥊 P2P VS. {opponentName.toUpperCase()}</Text>}
+                        <Text style={styles.receiptQuestion}>{question}</Text>
+                      </View>
                       <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor, borderWidth: 1 }]}>
                         <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
                       </View>
                     </View>
-
-                    {/* Body: Pick Data & Math */}
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.receiptAmount}>Pick: <Text style={styles.receiptPick}>{pick}</Text></Text>
                         <Text style={styles.receiptAmount}>Odds: <Text style={styles.receiptOdds}>{odds}x</Text></Text>
                       </View>
-                      
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                        <Text style={styles.receiptAmount}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{wagerAmount} pts</Text></Text>
+                        <Text style={styles.receiptAmount}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{wagerAmt} pts</Text></Text>
                         <Text style={[
-                          wagerStatus === 'won' ? styles.receiptWon : (wagerStatus === 'lost' ? styles.receiptLost : styles.receiptToWin),
+                          statusColor === '#FFD700' ? styles.receiptToWin : (statusColor === '#00D084' ? styles.receiptWon : styles.receiptLost),
                           { marginTop: 4 }
                         ]}>
-                          {wagerStatus === 'won' ? `Payout: ${potentialWin} pts` : `Win: ${potentialWin} pts`}
+                          {statusColor === '#00D084' ? `Payout: ${potentialWin} pts` : `Win: ${potentialWin} pts`}
                         </Text>
                       </View>
                     </View>
@@ -956,39 +945,28 @@ function openBetSlip(bet: any, option?: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', padding: 15, paddingTop: 50 },
-  // --- NEW HEADER & BUTTON STYLES ---
   headerContainer: { marginBottom: 15 },
-  
   topNavRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   rightNavGroup: { flexDirection: 'row', gap: 10 },
-  
-  // Pill Buttons
   navPillLeave: { backgroundColor: '#2a2a2a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
   navPillLeaveText: { color: '#ff4444', fontWeight: 'bold', fontSize: 14 },
-  
   navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
   navPillHostText: { color: '#FFD700', fontWeight: 'bold', fontSize: 14 },
-
-  // Main Header Layout
   mainHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   pitchButton: { backgroundColor: '#00D084', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, shadowColor: '#00D084', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
   pitchButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 }, 
   title: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
   subtitle: { fontSize: 16, color: '#00D084', marginTop: 5, fontWeight: '600' },
   balanceText: { fontSize: 16, color: '#a0a0a0', marginTop: 5 },
-  
   betCard: { backgroundColor: '#1e1e1e', borderRadius: 12, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   betQuestion: { fontSize: 18, color: '#fff', fontWeight: 'bold', marginBottom: 15 },
   optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   optionButton: { flex: 1, minWidth: '45%', backgroundColor: '#2a2a2a', paddingVertical: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#444' },
   optionLabel: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
   optionOdds: { color: '#00D084', fontSize: 12, fontWeight: 'bold' },
-
-  // NEW STYLES for the Locked Receipt
   lockedWagerCard: { backgroundColor: '#121212', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', alignItems: 'center' },
   lockedText: { color: '#00D084', fontWeight: 'bold', fontSize: 16, marginBottom: 5 },
   lockedDetails: { color: '#a0a0a0', fontSize: 14 },
-
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   betSlipContainer: { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 },
   slipHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -1007,130 +985,34 @@ const styles = StyleSheet.create({
   payoutAmount: { color: '#00D084', fontSize: 20, fontWeight: 'bold' },
   confirmButton: { backgroundColor: '#00D084', padding: 18, borderRadius: 10, alignItems: 'center' },
   confirmButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
-  // Add these inside your styles object in DashboardScreen.tsx
-  modalOverlayCenter: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    backgroundColor: 'rgba(0,0,0,0.8)', 
-    padding: 20 
-  },
-  gradeModalContent: { 
-    backgroundColor: '#1e1e1e', 
-    padding: 25, 
-    borderRadius: 15 
-  },
-  modalTitle: { 
-    fontSize: 24, 
-    fontWeight: 'bold', 
-    color: '#fff', 
-    marginBottom: 20, 
-    textAlign: 'center' 
-  },
-  pitchInput: { 
-    backgroundColor: '#121212', 
-    color: '#fff', 
-    fontSize: 18, 
-    borderRadius: 8, 
-    padding: 15, 
-    borderWidth: 1, 
-    borderColor: '#333', 
-    marginBottom: 20,
-    minHeight: 100, // Gives them plenty of room to type a crazy prop bet
-    textAlignVertical: 'top' // Keeps text at the top of the box on Android
-  },
-  // Add to your Pill Buttons section:
+  modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
+  gradeModalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 20, textAlign: 'center' },
+  pitchInput: { backgroundColor: '#121212', color: '#fff', fontSize: 18, borderRadius: 8, padding: 15, borderWidth: 1, borderColor: '#333', marginBottom: 20, minHeight: 100, textAlignVertical: 'top' },
   navPillMyBets: { backgroundColor: 'rgba(52, 152, 219, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#3498db' },
   navPillMyBetsText: { color: '#3498db', fontWeight: 'bold', fontSize: 14 },
-
-  // Add these Receipt Card styles to the very bottom:
   receiptCard: { backgroundColor: '#121212', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   receiptQuestion: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  receiptDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
   receiptPick: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
   receiptAmount: { color: '#a0a0a0', fontSize: 14 },
-  badgeWon: { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderWidth: 1, borderColor: '#00D084' },
-  badgeLost: { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderWidth: 1, borderColor: '#ff4444' },
-  badgePending: { backgroundColor: 'rgba(255, 215, 0, 0.2)', borderWidth: 1, borderColor: '#FFD700' },
   statusText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   receiptOdds: { color: '#a0a0a0', fontSize: 14, fontWeight: 'bold' },
   receiptToWin: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
   receiptWon: { color: '#00D084', fontSize: 14, fontWeight: 'bold' },
   receiptLost: { color: '#ff4444', fontSize: 14, fontWeight: 'bold' },
-  //statusBadge: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 6 },
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    height: 22,
-    justifyContent: 'center'
-  },
-  // --- BOTTOM NAV STYLES ---
-  // --- BOTTOM NAV STYLES ---
-  bottomNavBar: {
-    flexDirection: 'row',
-    backgroundColor: '#1e1e1e',
-    borderTopWidth: 1,
-    borderTopColor: '#333',
-    // These negative margins counteract the container's padding to hit the edges
-    marginHorizontal: -15,
-    marginBottom: -15,
-    // Adds safe area padding for modern iPhones with the swipe-up bar
-    paddingBottom: Platform.OS === 'ios' ? 25 : 0, 
-  },
-  bottomNavBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 15,
-  },
-  bottomNavBtnActive: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 15,
-    backgroundColor: 'rgba(0, 208, 132, 0.05)',
-    // Moved the active indicator line to the top of the tab
-    borderTopWidth: 3, 
-    borderTopColor: '#00D084',
-    marginTop: -1, // Snaps the green line perfectly over the gray border
-  },
-  bottomNavText: {
-    color: '#a0a0a0',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  bottomNavTextActive: {
-    color: '#00D084',
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  // --- STANDINGS STYLES ---
-  standingsCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#1e1e1e',
-    padding: 18,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#333'
-  },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, height: 22, justifyContent: 'center' },
+  bottomNavBar: { flexDirection: 'row', backgroundColor: '#1e1e1e', borderTopWidth: 1, borderTopColor: '#333', marginHorizontal: -15, marginBottom: -15, paddingBottom: Platform.OS === 'ios' ? 25 : 0 },
+  bottomNavBtn: { flex: 1, alignItems: 'center', paddingVertical: 15 },
+  bottomNavBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 15, backgroundColor: 'rgba(0, 208, 132, 0.05)', borderTopWidth: 3, borderTopColor: '#00D084', marginTop: -1 },
+  bottomNavText: { color: '#a0a0a0', fontSize: 12, fontWeight: 'bold', marginTop: 4 },
+  bottomNavTextActive: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginTop: 4 },
+  standingsCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: 18, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#333' },
   standingsRank: { color: '#00D084', fontSize: 18, fontWeight: 'bold', marginRight: 15 },
   standingsName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   standingsScore: { color: '#FFD700', fontSize: 18, fontWeight: 'bold' },
-  // --- SHARE BUTTON STYLES ---
   navPillShare: { backgroundColor: 'rgba(0, 208, 132, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#00D084' },
   navPillShareText: { color: '#00D084', fontWeight: 'bold', fontSize: 14 },
-  
-// --- CENTERED MODAL OVERLAY ---
-  centeredModalOverlay: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(0, 0, 0, 0.7)' 
-  },
-  // --- SHARE MODAL STYLES ---
+  centeredModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.7)' },
   shareModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   shareModalTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
   shareModalSub: { color: '#a0a0a0', fontSize: 14, textAlign: 'center', marginBottom: 25 },
@@ -1140,18 +1022,11 @@ const styles = StyleSheet.create({
   copyButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold' },
   closeModalBtn: { paddingVertical: 10, width: '100%', alignItems: 'center' },
   closeModalText: { color: '#a0a0a0', fontSize: 16, fontWeight: 'bold' },
-  // --- P2P MODAL STYLES ---
-  p2pModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '90%', borderWidth: 1, borderColor: '#333' },
-  inputLabel: { color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 },
-  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
-  mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
-  mathText: { color: '#a0a0a0', fontSize: 14, marginBottom: 4 },
-  potText: { color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 },
-  p2pChallengeBtnText: { color: '#FFD700', fontWeight: 'bold', fontSize: 12 },
-  // --- NEW MODAL STYLES ---
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4, borderWidth: 1, borderColor: '#333' },
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
   typeBtnActive: { backgroundColor: '#FFD700' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
-  });
+  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
+  mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
+});
