@@ -179,9 +179,23 @@ export default function WelcomeScreen({ navigation }: any) {
             <TouchableOpacity style={styles.hostButton} onPress={handleHostGame}>
               <Text style={styles.hostButtonText}>👑 Host a New Game</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.loginLink} onPress={() => console.log('Route to Login')}>
-              <Text style={styles.loginLinkText}>Already a Host? <Text style={{ color: '#BB86FC', fontWeight: 'bold' }}>Log In</Text></Text>
-            </TouchableOpacity>
+            <TouchableOpacity 
+            style={styles.hostButton} 
+            onPress={handleHostGame}
+          >
+            <Text style={styles.hostButtonText}>👑 Host a New Game</Text>
+          </TouchableOpacity>
+
+          {/* 🚨 ADD THIS NEW LOGIN LINK 🚨 */}
+          <TouchableOpacity 
+            style={{ marginTop: 25, alignItems: 'center', padding: 10 }} 
+            // We pass a parameter to tell the Auth screen to start in "Login" mode
+            onPress={() => navigation.navigate('HostAuth', { startInLogin: true })}
+          >
+            <Text style={{ color: '#a0a0a0', fontSize: 14 }}>
+              Already have an account? <Text style={{ color: '#BB86FC', fontWeight: 'bold' }}>Log In</Text>
+            </Text>
+          </TouchableOpacity>
           </View>
 
         </View>

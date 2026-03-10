@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { supabase } from '../supabase'; 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
   StyleSheet, 
   Text, 
@@ -35,21 +37,55 @@ export default function CreateGameScreen({ navigation }: any) {
     }
 
     setIsLoading(true);
-    const newCode = generateRoomCode();
+    const newCode = generateRoomCode(); // Grabs the 6-digit code
 
     try {
-      // 🚨 SUPABASE LOGIC WILL GO HERE 🚨
-      // 1. Create the Campaign in the database with `newCode`
-      // 2. Add the current user as a 'host'
-      // 3. Navigate to Dashboard
+      // 1. Grab the Host's ID from the phone's memory
+      const hostId = await AsyncStorage.getItem('userId');
+      const hostName = await AsyncStorage.getItem('userName');
       
-      console.log("Creating Game:", gameName, "with Code:", newCode);
-      
-      // Temporary navigation for testing the UI
-      // navigation.navigate('Dashboard', { campaignName: gameName, role: 'host' });
+      if (!hostId) {
+        throw new Error("We couldn't find your Host ID. Try logging in again.");
+      }
+
+      // 2. Create the Campaign in the database
+      const { data: campaignData, error: campaignError } = await supabase
+        .from('campaigns')
+        .insert({
+          name: gameName.trim(),
+          join_code: newCode,
+          status: 'active'
+        })
+        .select() // Tells Supabase to return the newly created row
+        .single();
+
+      if (campaignError) throw campaignError;
+
+      // 3. Add YOU as the Host in the participants table
+      const { error: participantError } = await supabase
+        .from('campaign_participants')
+        .insert({
+          campaign_id: campaignData.id,
+          user_id: hostId,
+          role: 'host', // 👑 This is what gives you God Mode on the Dashboard!
+          global_point_balance: parseInt(startingBankroll) || 10000
+        });
+
+      if (participantError) throw participantError;
+
+      // 4. Save the active campaign data to the phone's memory
+      await AsyncStorage.setItem('campaignId', campaignData.id);
+      await AsyncStorage.setItem('campaignName', campaignData.name);
+
+      // 5. Blast off to the Dashboard!
+      navigation.navigate('Dashboard', { 
+        userName: hostName || 'Host', 
+        campaignName: campaignData.name
+      });
 
     } catch (error: any) {
-      Alert.alert("Error", error.message);
+      console.error(error);
+      Alert.alert("Error Creating Game", error.message);
     } finally {
       setIsLoading(false);
     }

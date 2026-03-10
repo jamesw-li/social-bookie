@@ -13,8 +13,8 @@ import {
 import { supabase } from '../supabase'; // Update path if needed
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export default function HostAuthScreen({ navigation }: any) {
-  const [isLogin, setIsLogin] = useState(true); // Toggles between Login and Sign Up
+export default function HostAuthScreen({ route, navigation }: any) {
+  const [isLogin, setIsLogin] = useState(route.params?.startInLogin || false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [hostName, setHostName] = useState(''); // Only used for Sign Up
@@ -80,11 +80,23 @@ export default function HostAuthScreen({ navigation }: any) {
         await AsyncStorage.setItem('userName', hostName.trim());
       }
 
-      // Success! Route them to the Game Creation screen
-      navigation.navigate('CreateGame');
+      // 🚨 THE NEW ROUTING LOGIC 🚨
+      if (isLogin) {
+        // Returning users (Hosts or upgraded Guests) go to their Campaign list
+        navigation.navigate('Campaigns'); 
+      } else {
+        // Brand new Hosts go straight to creating their first game
+        navigation.navigate('CreateGame');
+      }
 
     } catch (error: any) {
       Alert.alert("Authentication Failed", error.message);
+      // The Web-Safe Error Popup
+      if (Platform.OS === 'web') {
+        window.alert(`Authentication Failed: ${error.message}`);
+      } else {
+        Alert.alert("Authentication Failed", error.message);
+      }
     } finally {
       setIsLoading(false);
     }
