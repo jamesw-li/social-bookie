@@ -58,6 +58,8 @@ export default function DashboardScreen({ route, navigation }: any) {
     const num = parseFloat(val);
     if (num > 0 && num <= 100) setBlindBid((100 / num).toFixed(2));
   };
+
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   
 
   useEffect(() => {
@@ -83,6 +85,10 @@ export default function DashboardScreen({ route, navigation }: any) {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => loadBoard()).subscribe();
       blindSub = supabase.channel('public:blind_dashboard') // NEW
         .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => loadBoard()).subscribe();
+      const proposalSub = supabase.channel('public:proposal_dashboard')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => {
+          loadBoard(); // This re-runs the count fetch above!
+        }).subscribe();
     }
 
     loadBoard();
@@ -106,12 +112,15 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   async function loadBoard() {
     try {
+      // 1. GET USER & CAMPAIGN IDs
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
       
-      setUserId(storedUserId); setCampaignId(storedCampaignId);
-      
+      setUserId(storedUserId); 
+      setCampaignId(storedCampaignId);
+
+      // 2. FETCH CAMPAIGN & WALLET STATUS
       const { data: campaignData } = await supabase.from('campaigns').select('join_code, status').eq('id', storedCampaignId).single();
       if (campaignData?.status === 'closed') {
         setLoading(false);
@@ -120,22 +129,41 @@ export default function DashboardScreen({ route, navigation }: any) {
       if (campaignData?.join_code) setJoinCode(campaignData.join_code);
 
       const { data: participantData } = await supabase.from('campaign_participants').select('global_point_balance, role').eq('user_id', storedUserId).eq('campaign_id', storedCampaignId).single();
-      if (participantData) { setWalletBalance(participantData.global_point_balance); setUserRole(participantData.role); }
+      if (participantData) { 
+        setWalletBalance(participantData.global_point_balance); 
+        setUserRole(participantData.role); 
+      }
 
+      // 3. FETCH THE ACTIVE EVENT
       const { data: eventData } = await supabase.from('events').select('*').eq('campaign_id', storedCampaignId).eq('status', 'live').single();
+      
+      // If there is no live event, stop loading and return early
       if (!eventData) return setLoading(false);
       setActiveEvent(eventData);
 
+      // --- 4. NEW: FETCH PENDING APPROVALS COUNT (Safe to use eventData.id now!) ---
+      const { count, error: countError } = await supabase
+        .from('guest_proposals')
+        .select('id', { count: 'exact' })
+        .eq('event_id', eventData.id) 
+        .eq('status', 'pending');
+
+      if (!countError && count !== null) {
+        setPendingApprovals(count);
+      }
+      // -----------------------------------------------------------------------------
+
+      // 5. FETCH ALL BOARD BETS (Standard, P2P, and Blind)
       const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('event_id', eventData.id).in('status', ['open', 'locked']);
       if (betsData) setBets(betsData);
 
       const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']);
       if (p2pData) setP2pBets(p2pData);
 
-      // --- NEW: FETCH BLIND MATCHUPS ---
       const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']);
       if (blindData) setBlindMatchups(blindData);
 
+      // 6. FETCH WAGERS & STANDINGS
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
       if (wagersData) {
         const eventWagers = wagersData.filter((w: any) => w.bets?.event_id === eventData.id);
@@ -146,7 +174,11 @@ export default function DashboardScreen({ route, navigation }: any) {
       const { data: standingsData } = await supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false }); 
       if (standingsData) setStandings(standingsData);
 
-    } catch (error: any) { console.error(error.message); } finally { setLoading(false); }
+    } catch (error: any) { 
+      console.error(error.message); 
+    } finally { 
+      setLoading(false); 
+    }
   }
 
   // ... (Keep existing openBetSlip, submitWager, handleClaimP2P, executeClaim, submitSuggestion, handleSwitchEvent intact) ...
@@ -606,11 +638,37 @@ export default function DashboardScreen({ route, navigation }: any) {
       <View style={styles.headerContainer}>
         {/* ... (Existing Header UI) ... */}
         <View style={styles.topNavRow}>
-          <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}><Text style={styles.navPillLeaveText}>← Leave</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
+            <Text style={styles.navPillLeaveText}>← Leave</Text>
+          </TouchableOpacity>
+          
           <View style={styles.rightNavGroup}>
-            {joinCode ? ( <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}><Text style={styles.navPillShareText}>📤 Share</Text></TouchableOpacity> ) : null}
-            <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}><Text style={styles.navPillMyBetsText}>🧾 My Bets</Text></TouchableOpacity>
-            {userRole === 'host' && ( <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}><Text style={styles.navPillHostText}>👑 Host</Text></TouchableOpacity> )}
+            {joinCode ? ( 
+              <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}>
+                <Text style={styles.navPillShareText}>📤 Share</Text>
+              </TouchableOpacity> 
+            ) : null}
+            
+            <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}>
+              <Text style={styles.navPillMyBetsText}>🧾 My Bets</Text>
+            </TouchableOpacity>
+            
+            {userRole === 'host' && ( 
+              <View style={{ position: 'relative' }}>
+                <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
+                  <Text style={styles.navPillHostText}>👑 Host</Text>
+                </TouchableOpacity>
+                
+                {/* --- NEW: THE NOTIFICATION BADGE --- */}
+                {pendingApprovals > 0 && (
+                  <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>
+                      {pendingApprovals > 9 ? '9+' : pendingApprovals}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </View>
 
@@ -1093,5 +1151,25 @@ const styles = StyleSheet.create({
   previewRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   previewText: { color: '#a0a0a0' },
   previewRisk: { color: '#fff', fontWeight: 'bold' },
-  disclaimer: { color: '#666', fontSize: 10, fontStyle: 'italic', marginTop: 10, textAlign: 'center' }
+  disclaimer: { color: '#666', fontSize: 10, fontStyle: 'italic', marginTop: 10, textAlign: 'center' },
+  badgeContainer: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#ff4444',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#121212', // Matches your app's dark background to create a cutout effect
+    paddingHorizontal: 4,
+    zIndex: 10,
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
 });
