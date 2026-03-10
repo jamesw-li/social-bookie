@@ -5,21 +5,47 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function CampaignScreen({ route, navigation }: any) {
-  const { userId, userName } = route.params; // Catch the data passed from WelcomeScreen
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
   const [closedCampaigns, setClosedCampaigns] = useState<any[]>([]);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
-  const [currentUserName, setCurrentUserName] = useState(route.params.userName);
+  
+ // Grab the params safely. If they don't exist, default to an empty string.
+  const [userId, setUserId] = useState<string>(route.params?.userId || '');
+  const [currentUserName, setCurrentUserName] = useState<string>(route.params?.userName || '');
 
   useEffect(() => {
-    fetchCampaigns();
-    // If the Settings screen passes back a new name, update our local state!
-    if (route.params?.updatedUserName) {
-      setCurrentUserName(route.params.updatedUserName);
+    async function loadUserData() {
+      const storedId = await AsyncStorage.getItem('userId');
+      const storedName = await AsyncStorage.getItem('userName');
+
+      // 1. Ensure we have an ID
+      if (!userId && storedId) {
+        setUserId(storedId);
+      }
+
+      // 2. Did Settings just pass back a brand new name? Use it and save it!
+      if (route.params?.updatedUserName) {
+        setCurrentUserName(route.params.updatedUserName);
+        // Save the newly edited name to phone memory!
+        await AsyncStorage.setItem('userName', route.params.updatedUserName);
+      } 
+      // 3. Is the name blank because route.params missed it? Pull from memory!
+      else if (!currentUserName && storedName) {
+        setCurrentUserName(storedName);
+      }
     }
+    
+    loadUserData();
   }, [route.params?.updatedUserName]);
+
+  // Fetch campaigns ONLY after we have successfully loaded the userId
+  useEffect(() => {
+    if (userId) {
+      fetchCampaigns();
+    }
+  }, [userId]);
 
   async function fetchCampaigns() {
     try {
@@ -174,7 +200,7 @@ export default function CampaignScreen({ route, navigation }: any) {
         
         {/* UPDATED NAVIGATION HERE */}
         <TouchableOpacity 
-          onPress={() => navigation.navigate('Settings', { userId, currentName: userName })} 
+          onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
           style={{ padding: 5 }}
         >
           <Ionicons name="settings-outline" size={28} color="#BB86FC" />

@@ -13,6 +13,8 @@ import CreateBoardScreen from './screens/CreateBoardScreen';
 import FinalResultsScreen from './screens/FinalResultsScreen';
 import ReadOnlyDashboardScreen from './screens/ReadOnlyDashboardScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import CreateGameScreen from './screens/CreateGameScreen';
+import HostAuthScreen from './screens/HostAuthScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -113,6 +115,8 @@ export default function App() {
           options={{ headerShown: false }} 
       />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="CreateGame" component={CreateGameScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HostAuth" component={HostAuthScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
   );
