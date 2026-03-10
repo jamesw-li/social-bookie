@@ -10,6 +10,7 @@ export default function CampaignScreen({ route, navigation }: any) {
   const [closedCampaigns, setClosedCampaigns] = useState<any[]>([]);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(true); // Default to true for safety
   
  // Grab the params safely. If they don't exist, default to an empty string.
   const [userId, setUserId] = useState<string>(route.params?.userId || '');
@@ -38,6 +39,13 @@ export default function CampaignScreen({ route, navigation }: any) {
     }
     
     loadUserData();
+    async function checkAuthStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setIsAnonymous(user?.is_anonymous ?? true);
+      }
+    }
+    checkAuthStatus();
   }, [route.params?.updatedUserName]);
 
   // Fetch campaigns ONLY after we have successfully loaded the userId
@@ -192,21 +200,21 @@ export default function CampaignScreen({ route, navigation }: any) {
       {/* --- STATIC HEADER --- */}
       <View style={styles.header}>
         {/* --- HEADER ROW --- */}
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.title}>My Campaigns</Text>
-          <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>My Campaigns</Text>
+            <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+          </View>
+          
+          {/* UPDATED NAVIGATION HERE */}
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
+            style={{ padding: 5 }}
+          >
+            <Ionicons name="settings-outline" size={28} color="#BB86FC" />
+          </TouchableOpacity>
         </View>
-        
-        {/* UPDATED NAVIGATION HERE */}
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
-          style={{ padding: 5 }}
-        >
-          <Ionicons name="settings-outline" size={28} color="#BB86FC" />
-        </TouchableOpacity>
-      </View>
-        
+          
         {/* NEW: Join via Code Box */}
         <View style={styles.joinBox}>
           <TextInput
@@ -218,6 +226,7 @@ export default function CampaignScreen({ route, navigation }: any) {
             value={joinCode}
             onChangeText={setJoinCode}
           />
+     
           <TouchableOpacity 
             style={[styles.joinBtn, (!joinCode || isJoining) && { opacity: 0.5 }]} 
             onPress={handleJoinWithCode}
@@ -225,15 +234,21 @@ export default function CampaignScreen({ route, navigation }: any) {
           >
             <Text style={styles.joinBtnText}>{isJoining ? '...' : 'Join'}</Text>
           </TouchableOpacity>
+          
         </View>
 
-        <Text style={styles.subtitle}>Or create your own board:</Text>
-        <TouchableOpacity 
-          style={styles.createButton} 
-          onPress={() => navigation.navigate('CreateBoard')}
-        >
-          <Text style={styles.createButtonText}>+ Host a New Game</Text>
-        </TouchableOpacity>
+        
+        {!isAnonymous && (
+          <>
+            <Text style={styles.subtitle}>Or create your own board:</Text>
+            <TouchableOpacity 
+              style={styles.createButton} 
+              onPress={() => navigation.navigate('CreateBoard')}
+            >
+              <Text style={styles.createButtonText}>+ Host a New Game</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {/* --- SCROLLABLE ZONE 1: LIVE ACTION --- */}
