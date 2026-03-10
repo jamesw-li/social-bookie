@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput } from 'react-native';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function CampaignScreen({ route, navigation }: any) {
   const { userId, userName } = route.params; // Catch the data passed from WelcomeScreen
@@ -10,10 +11,15 @@ export default function CampaignScreen({ route, navigation }: any) {
   const [closedCampaigns, setClosedCampaigns] = useState<any[]>([]);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState(route.params.userName);
 
   useEffect(() => {
     fetchCampaigns();
-  }, []);
+    // If the Settings screen passes back a new name, update our local state!
+    if (route.params?.updatedUserName) {
+      setCurrentUserName(route.params.updatedUserName);
+    }
+  }, [route.params?.updatedUserName]);
 
   async function fetchCampaigns() {
     try {
@@ -147,7 +153,7 @@ export default function CampaignScreen({ route, navigation }: any) {
         navigation.navigate('ReadOnlyDashboard', { campaignName: campaign.name });
       } else {
         // Send them to the live betting floor!
-        navigation.navigate('Dashboard', { userName, campaignName: campaign.name });
+        navigation.navigate('Dashboard', { currentUserName, campaignName: campaign.name });
       }
 
     } catch (error: any) {
@@ -159,9 +165,21 @@ export default function CampaignScreen({ route, navigation }: any) {
       
       {/* --- STATIC HEADER --- */}
       <View style={styles.header}>
-        {/* NEW: Welcome text pulling the name from route.params */}
-        <Text style={styles.welcomeText}>Welcome, {userName || 'Player'}!</Text>
-        <Text style={styles.title}>Your Campaigns</Text>
+        {/* --- HEADER ROW --- */}
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.title}>My Campaigns</Text>
+          <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+        </View>
+        
+        {/* UPDATED NAVIGATION HERE */}
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Settings', { userId, currentName: userName })} 
+          style={{ padding: 5 }}
+        >
+          <Ionicons name="settings-outline" size={28} color="#BB86FC" />
+        </TouchableOpacity>
+      </View>
         
         {/* NEW: Join via Code Box */}
         <View style={styles.joinBox}>
@@ -240,7 +258,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
   header: { marginBottom: 15 },
   welcomeText: { fontSize: 18, color: '#00D084', fontWeight: 'bold', marginBottom: 5 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 10 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 40},
   card: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   cardText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
   createButton: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginBottom: 25 },
@@ -292,5 +310,17 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start', // This anchors the gear to the absolute top
+    marginBottom: 20,
+    // REMOVED: marginTop and paddingHorizontal (the container handles these now!)
+  },
+  pageTitle: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: 'bold',
   },
 });

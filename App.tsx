@@ -12,6 +12,7 @@ import LeaderboardScreen from './screens/LeaderboardScreen';
 import CreateBoardScreen from './screens/CreateBoardScreen';
 import FinalResultsScreen from './screens/FinalResultsScreen';
 import ReadOnlyDashboardScreen from './screens/ReadOnlyDashboardScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -73,7 +74,7 @@ export default function App() {
           name="Campaigns" 
           component={CampaignScreen} 
           initialParams={savedData} // Pass the recovered user data
-          options={{ title: 'Find Event' }} 
+          options={{ headerShown: false }} 
         />
         <Stack.Screen 
           name="Dashboard" 
@@ -111,8 +112,8 @@ export default function App() {
           component={ReadOnlyDashboardScreen} 
           options={{ headerShown: false }} 
       />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
-      
     </NavigationContainer>
   );
 }
