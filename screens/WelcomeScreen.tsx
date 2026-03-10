@@ -179,12 +179,6 @@ export default function WelcomeScreen({ navigation }: any) {
             <TouchableOpacity style={styles.hostButton} onPress={handleHostGame}>
               <Text style={styles.hostButtonText}>👑 Host a New Game</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-            style={styles.hostButton} 
-            onPress={handleHostGame}
-          >
-            <Text style={styles.hostButtonText}>👑 Host a New Game</Text>
-          </TouchableOpacity>
 
           {/* 🚨 ADD THIS NEW LOGIN LINK 🚨 */}
           <TouchableOpacity 

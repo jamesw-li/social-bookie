@@ -238,7 +238,7 @@ export default function CampaignScreen({ route, navigation }: any) {
         </View>
 
         
-        {!isAnonymous && (
+  
           <>
             <Text style={styles.subtitle}>Or create your own board:</Text>
             <TouchableOpacity 
@@ -248,7 +248,6 @@ export default function CampaignScreen({ route, navigation }: any) {
               <Text style={styles.createButtonText}>+ Host a New Game</Text>
             </TouchableOpacity>
           </>
-        )}
       </View>
 
       {/* --- SCROLLABLE ZONE 1: LIVE ACTION --- */}
