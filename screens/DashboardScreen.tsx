@@ -846,7 +846,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       </View>
 
       {/* --- BLIND BID MODAL --- */}
-      <Modal visible={blindModalVisible} animationType="slide" transparent={true}>
+      <Modal visible={blindModalVisible} animationType="slide" transparent={true} statusBarTranslucent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.betSlipContainer}>
             <View style={styles.gradeModalContent}>
@@ -959,7 +959,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       </Modal>
 
       {/* --- BET SLIP MODAL (HOUSE BETS) --- */}
-      <Modal visible={modalVisible} transparent={true} animationType="slide">
+      <Modal visible={modalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={styles.betSlipContainer}>
             <View style={styles.slipHeaderRow}>
@@ -991,7 +991,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       </Modal>
 
       {/* --- GUEST: NEW PITCH BET MODAL --- */}
-      <Modal visible={suggestModalVisible} transparent={true} animationType="slide">
+      <Modal visible={suggestModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 }]}>
             <View style={styles.slipHeaderRow}>
@@ -1217,7 +1217,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       </Modal>
 
       {/* --- MY BETS (LIVE RECEIPTS) MODAL --- */}
-      <Modal visible={myBetsModalVisible} transparent={true} animationType="slide">
+      <Modal visible={myBetsModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.gradeModalContent, { maxHeight: '80%', width: '100%' }]}>
             <Text style={styles.modalTitle}>My Live Tickets</Text>
@@ -1352,7 +1352,16 @@ const styles = StyleSheet.create({
   statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, height: 22, justifyContent: 'center' },
   statusText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
-  bottomNavBar: { flexDirection: 'row', backgroundColor: '#1e1e1e', borderTopWidth: 1, borderTopColor: '#333', marginHorizontal: -15, marginBottom: -15, paddingBottom: Platform.OS === 'ios' ? 25 : 0 },
+  bottomNavBar: { 
+    flexDirection: 'row', 
+    backgroundColor: '#1e1e1e', 
+    borderTopWidth: 1, 
+    borderTopColor: '#333', 
+    marginHorizontal: -15, 
+    marginBottom: -15, 
+    // 🚨 THE FIX: 25 for iOS, 15 for Android, 0 for Web
+    paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'android' ? 0 : 0 
+  },
   bottomNavBtn: { flex: 1, alignItems: 'center', paddingVertical: 15 },
   bottomNavBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 15, backgroundColor: 'rgba(0, 208, 132, 0.05)', borderTopWidth: 3, borderTopColor: '#00D084', marginTop: -1 },
   bottomNavText: { color: '#a0a0a0', fontSize: 12, fontWeight: 'bold', marginTop: 4 },
@@ -1364,6 +1373,18 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
+  modalContent: { 
+    backgroundColor: '#1e1e1e', 
+    padding: 25, 
+    width: '100%', 
+    
+    // Round the top corners
+    borderTopLeftRadius: 25, 
+    borderTopRightRadius: 25,
+    
+    // Keep the bottom padding so buttons aren't blocked by the home bar
+    paddingBottom: Platform.OS === 'ios' ? 40 : Platform.OS === 'android' ? 35 : 25,
+  },
   centeredModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.7)' },
   closeSlipText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   confirmButton: { backgroundColor: '#00D084', padding: 18, borderRadius: 10, alignItems: 'center' },
@@ -1384,7 +1405,6 @@ const styles = StyleSheet.create({
   payoutLabel: { color: '#a0a0a0', fontSize: 16 },
   payoutAmount: { color: '#00D084', fontSize: 20, fontWeight: 'bold' },
 
-  modalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
   gradeModalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 20, textAlign: 'center' },
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4, borderWidth: 1, borderColor: '#333' },

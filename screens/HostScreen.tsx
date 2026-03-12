@@ -853,7 +853,7 @@ export default function HostScreen({ navigation }: any) {
       />
 
       {/* --- CREATE BET MODAL --- */}
-      <Modal visible={createModalVisible} transparent={true} animationType="slide">
+      <Modal visible={createModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -1098,7 +1098,7 @@ export default function HostScreen({ navigation }: any) {
       </Modal>
 
       {/* Grade Modal */}
-      <Modal visible={gradeModalVisible} transparent={true} animationType="fade">
+      <Modal visible={gradeModalVisible} transparent={true} animationType="fade" statusBarTranslucent={true}>
         <View style={styles.modalOverlayCenter}>
           <View style={styles.gradeModalContent}>
             <Text style={styles.modalTitle}>Who Won?</Text>
@@ -1185,7 +1185,18 @@ const styles = StyleSheet.create({
   typeBtnTextActive: { color: '#000' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
   modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
-  modalContent: { backgroundColor: '#1e1e1e', padding: 25, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
+  modalContent: { 
+    backgroundColor: '#1e1e1e', 
+    padding: 25, 
+    width: '100%', 
+    
+    // Round the top corners
+    borderTopLeftRadius: 25, 
+    borderTopRightRadius: 25,
+    
+    // Keep the bottom padding so buttons aren't blocked by the home bar
+    paddingBottom: Platform.OS === 'ios' ? 40 : Platform.OS === 'android' ? 35 : 25,
+  },
   gradeModalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
