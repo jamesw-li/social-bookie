@@ -15,72 +15,85 @@ import {
 
 export default function CreateGameScreen({ navigation }: any) {
   const [gameName, setGameName] = useState('');
+  const [eventName, setEventName] = useState('');
   const [startingBankroll, setStartingBankroll] = useState('10000');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Helper function to generate a random 6-character alphanumeric code
   const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
     for (let i = 0; i < 6; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    // Formats it like "ABC - 123" just for visual display if we wanted, 
-    // but we will save it raw as "ABC123"
     return result;
   };
 
   const handleCreateGame = async () => {
-    if (!gameName.trim()) {
-      Alert.alert("Hold up", "Give your game a name first!");
-      return;
+    if (!gameName.trim() || !eventName.trim()) {
+      return Alert.alert("Hold up", "Please fill out the game and event names.");
     }
 
     setIsLoading(true);
-    const newCode = generateRoomCode(); // Grabs the 6-digit code
+    const newCode = generateRoomCode();
 
     try {
-      // 1. Grab the Host's ID from the phone's memory
       const hostId = await AsyncStorage.getItem('userId');
       const hostName = await AsyncStorage.getItem('userName');
       
-      if (!hostId) {
-        throw new Error("We couldn't find your Host ID. Try logging in again.");
-      }
+      if (!hostId) throw new Error("We couldn't find your Host ID. Try logging in again.");
 
-      // 2. Create the Campaign in the database
+      // 1. Create the Campaign (WITH HOST ID!)
       const { data: campaignData, error: campaignError } = await supabase
         .from('campaigns')
-        .insert({
+        .insert([{
           name: gameName.trim(),
           join_code: newCode,
+          host_id: hostId, // 🚨 The missing piece!
           status: 'active'
-        })
-        .select() // Tells Supabase to return the newly created row
-        .single();
+        }])
+        .select().single();
 
       if (campaignError) throw campaignError;
 
-      // 3. Add YOU as the Host in the participants table
+      // 2. Create the critical First Event
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .insert([{ 
+          campaign_id: campaignData.id, 
+          name: eventName.trim(), 
+          status: 'live' // 🚨 Wakes up the Host Dashboard!
+        }])
+        .select().single();
+
+      if (eventError) throw eventError;
+
+      // 3. Add YOU as the Host with custom bankroll
       const { error: participantError } = await supabase
         .from('campaign_participants')
-        .insert({
+        .insert([{
           campaign_id: campaignData.id,
           user_id: hostId,
-          role: 'host', // 👑 This is what gives you God Mode on the Dashboard!
+          role: 'host', 
           global_point_balance: parseInt(startingBankroll) || 10000
-        });
+        }]);
 
       if (participantError) throw participantError;
 
-      // 4. Save the active campaign data to the phone's memory
+      // 4. Save ALL IDs to phone memory
       await AsyncStorage.setItem('campaignId', campaignData.id);
       await AsyncStorage.setItem('campaignName', campaignData.name);
+      await AsyncStorage.setItem('activeEventId', eventData.id); // 🚨 Helps the dashboard load instantly
 
-      // 5. Blast off to the Dashboard!
-      navigation.navigate('Dashboard', { 
-        userName: hostName || 'Host', 
-        campaignName: campaignData.name
+      // 5. Blast off!
+      Alert.alert('Success!', `Your board is live. Room Code: ${newCode}`);
+      
+      // Using reset ensures they can't "swipe back" to the creation screen
+      navigation.reset({
+        index: 0,
+        routes: [{ 
+          name: 'Dashboard', 
+          params: { userName: hostName || 'Host', campaignName: campaignData.name } 
+        }],
       });
 
     } catch (error: any) {
@@ -95,23 +108,22 @@ export default function CreateGameScreen({ navigation }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.innerContainer} keyboardShouldPersistTaps="handled">
         
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Host a Game</Text>
-          <View style={{ width: 60 }} /> {/* Spacer to center the title */}
+          <View style={{ width: 60 }} /> 
         </View>
 
         <View style={styles.formContainer}>
           <Text style={styles.iconTitle}>👑</Text>
           <Text style={styles.title}>Set the Stage</Text>
-          <Text style={styles.subtitle}>Name your room and set the starting bankroll for your players.</Text>
+          <Text style={styles.subtitle}>Set up the board for your crew.</Text>
 
-          {/* Game Name Input */}
+          {/* Campaign Name */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Game Name</Text>
+            <Text style={styles.label}>Campaign Name (The Trip/Party)</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. UFC 300 Watch Party"
@@ -122,7 +134,20 @@ export default function CreateGameScreen({ navigation }: any) {
             />
           </View>
 
-          {/* Starting Bankroll Input */}
+          {/* Event Name */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>First Event (What's happening right now?)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. The Main Card"
+              placeholderTextColor="#555"
+              value={eventName}
+              onChangeText={setEventName}
+              maxLength={30}
+            />
+          </View>
+
+          {/* Starting Bankroll */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Starting Points (Per Player)</Text>
             <TextInput
@@ -138,9 +163,9 @@ export default function CreateGameScreen({ navigation }: any) {
 
           {/* Create Button */}
           <TouchableOpacity 
-            style={[styles.createButton, !gameName.trim() ? styles.buttonDisabled : null]}
+            style={[styles.createButton, (!gameName.trim() || !eventName.trim()) ? styles.buttonDisabled : null]}
             onPress={handleCreateGame}
-            disabled={!gameName.trim() || isLoading}
+            disabled={!gameName.trim() || !eventName.trim() || isLoading}
           >
             <Text style={styles.createButtonText}>
               {isLoading ? 'GENERATING...' : 'GENERATE ROOM CODE'}

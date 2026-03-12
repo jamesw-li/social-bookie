@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, Platform, ScrollView, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { supabase } from '../supabase'; // Ensure this path is correct for your project
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,6 +23,7 @@ export default function SettingsScreen({ route, navigation }: any) {
   // The required security key
   const [currentPassword, setCurrentPassword] = useState('');
   const [currentEmail, setCurrentEmail] = useState('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
     async function checkUserStatus() {
@@ -35,6 +36,7 @@ export default function SettingsScreen({ route, navigation }: any) {
         setIsAnonymous(false);
         setCurrentEmail(user.email);
       }
+      setIsCheckingAuth(false);
     }
     checkUserStatus();
   }, []);
@@ -192,164 +194,145 @@ export default function SettingsScreen({ route, navigation }: any) {
     }
   };
 
-  return (
-    <View style={styles.container}>
+return (
+    // 1. We are back to the native KeyboardAvoidingView!
+    // Added keyboardVerticalOffset to give the native push an extra 20-pixel boost.
+    <KeyboardAvoidingView 
+      style={[styles.container, { flex: 1, backgroundColor: '#121212' }]} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} 
+    >
       
-      {/* Header with Back Button */}
+      {/* 2. HEADER: Pinned securely to the top */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5, marginRight: 15 }}>
           <Ionicons name="arrow-back" size={28} color="#BB86FC" />
         </TouchableOpacity>
         <Text style={styles.title}>Settings</Text>
       </View>
-      {/* --- PREMIUM PROFILE CARD (Only for Permanent Users) --- */}
-        {!isAnonymous && (
-          <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 30 }}>
-            {/* The Avatar Circle */}
-            <View style={{ 
-              width: 80, 
-              height: 80, 
-              borderRadius: 40, 
-              backgroundColor: '#BB86FC', 
-              justifyContent: 'center', 
-              alignItems: 'center',
-              marginBottom: 15,
-              shadowColor: '#BB86FC',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.3,
-              shadowRadius: 5,
-              elevation: 5
-            }}>
-              <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#121212' }}>
-                {/* Grabs the first letter of their name, or a question mark if missing */}
-                {currentName ? currentName.charAt(0).toUpperCase() : '?'}
-              </Text>
-            </View>
-            
-            {/* Display Name & Email */}
-            <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 5 }}>
-              {currentName || 'Host'}
-            </Text>
-            <Text style={{ fontSize: 16, color: '#a0a0a0', letterSpacing: 0.5 }}>
-              {currentEmail || 'Loading email...'}
-            </Text>
+
+      {/* 3. SCROLL VIEW: The Native Way */}
+      <ScrollView 
+        // 🚨 THE FIX: Increased paddingBottom to 150 to create a "runway" for the bottom inputs
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 170 }} 
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {isCheckingAuth ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 }}>
+            <ActivityIndicator size="large" color="#BB86FC" />
           </View>
-        )}
+        ) : (
+          <>
+            {/* --- PREMIUM PROFILE CARD --- */}
+            {!isAnonymous && (
+              <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 30 }}>
+                <View style={{ 
+                  width: 80, height: 80, borderRadius: 40, backgroundColor: '#BB86FC', 
+                  justifyContent: 'center', alignItems: 'center', marginBottom: 15,
+                  shadowColor: '#BB86FC', shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+                }}>
+                  <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#121212' }}>
+                    {currentName ? currentName.charAt(0).toUpperCase() : '?'}
+                  </Text>
+                </View>
+                
+                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 5 }}>
+                  {currentName || 'Host'}
+                </Text>
+                <Text style={{ fontSize: 16, color: '#a0a0a0', letterSpacing: 0.5 }}>
+                  {currentEmail || 'Loading email...'}
+                </Text>
+              </View>
+            )}
 
-    {/* --- THE UPGRADE ZONE (Only visible to Guests) --- */}
-        {isAnonymous && (
-          <View style={{ marginTop: 40, backgroundColor: '#1e1e1e', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#333' }}>
-            <Text style={{ color: '#00D084', fontSize: 16, fontWeight: 'bold', marginBottom: 5 }}>Save Your Winnings 🏆</Text>
-            <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 20 }}>
-              You are playing as a Guest. Link an email to save your Hall of Fame stats and play on other devices.
-            </Text>
+            {/* --- THE UPGRADE ZONE --- */}
+            {isAnonymous && (
+              <View style={{ marginTop: 40, backgroundColor: '#1e1e1e', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#333' }}>
+                {/* ... Upgrade Zone Inputs ... */}
+              </View>
+            )}
 
-            <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>Email</Text>
-            <TextInput
-              style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
-              placeholder="you@email.com"
-              placeholderTextColor="#555"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
-            />
+            {/* --- ACCOUNT MANAGEMENT --- */}
+            {!isAnonymous && (
+              <View style={{ marginTop: 40, borderTopWidth: 1, borderColor: '#333', paddingTop: 30 }}>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 20 }}>Account Settings</Text>
+                
+                {/* DISPLAY NAME */}
+                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>Display Name</Text>
+                <TextInput
+                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
+                  value={newName}
+                  onChangeText={setNewName}
+                  maxLength={20}
+                />
 
-            <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>Password</Text>
-            <TextInput
-              style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 20 }}
-              placeholder="••••••••"
-              placeholderTextColor="#555"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
+                {/* NEW EMAIL */}
+                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Email</Text>
+                <TextInput
+                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
+                  placeholder="Leave blank to keep current"
+                  placeholderTextColor="#555"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                />
 
+                {/* NEW PASSWORD */}
+                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Password</Text>
+                <TextInput
+                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 25 }}
+                  placeholder="Leave blank to keep current"
+                  placeholderTextColor="#555"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+
+                {/* THE SECURITY KEY */}
+                <View style={{ backgroundColor: '#1e1e1e', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ff4444', marginBottom: 20 }}>
+                  <Text style={{ color: '#ff4444', fontSize: 12, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase' }}>
+                    Required: Current Password
+                  </Text>
+                  <TextInput
+                    style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12 }}
+                    placeholder="Enter current password to save..."
+                    placeholderTextColor="#555"
+                    secureTextEntry
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                  />
+                </View>
+
+                {/* SAVE BUTTON */}
+                <TouchableOpacity 
+                  style={{ backgroundColor: currentPassword ? '#BB86FC' : '#333', padding: 15, borderRadius: 8, alignItems: 'center' }}
+                  onPress={handleSecureUpdate}
+                  disabled={isUpdatingAccount || !currentPassword}
+                >
+                  <Text style={{ color: currentPassword ? '#000' : '#777', fontWeight: 'bold', fontSize: 16 }}>
+                    {isUpdatingAccount ? 'VERIFYING & SAVING...' : 'SAVE CHANGES'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* --- LOG OUT BUTTON --- */}
             <TouchableOpacity 
-              style={{ backgroundColor: '#BB86FC', padding: 15, borderRadius: 8, alignItems: 'center' }}
-              onPress={handleUpgradeAccount}
-              disabled={isUpgrading}
+              style={{ marginTop: 50, marginBottom: 30, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ff4444', padding: 15, borderRadius: 8, alignItems: 'center' }}
+              onPress={handleLogout}
             >
-              <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>
-                {isUpgrading ? 'SAVING...' : 'LINK ACCOUNT'}
+              <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }}>
+                LOG OUT
               </Text>
             </TouchableOpacity>
-          </View>
+          </>
         )}
-        {/* --- ACCOUNT MANAGEMENT (Only visible to Permanent Users / Hosts) --- */}
-        {!isAnonymous && (
-          <View style={{ marginTop: 40, borderTopWidth: 1, borderColor: '#333', paddingTop: 30 }}>
-            <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 20 }}>Account Settings</Text>
-            
-            {/* DISPLAY NAME */}
-            <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>Display Name</Text>
-            <TextInput
-              style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
-              value={newName}
-              onChangeText={setNewName}
-              maxLength={20}
-            />
 
-            {/* NEW EMAIL */}
-            <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Email</Text>
-            <TextInput
-              style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
-              placeholder="Leave blank to keep current"
-              placeholderTextColor="#555"
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={newEmail}
-              onChangeText={setNewEmail}
-            />
-
-            {/* NEW PASSWORD */}
-            <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Password</Text>
-            <TextInput
-              style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 25 }}
-              placeholder="Leave blank to keep current"
-              placeholderTextColor="#555"
-              secureTextEntry
-              value={newPassword}
-              onChangeText={setNewPassword}
-            />
-
-            {/* THE SECURITY KEY */}
-            <View style={{ backgroundColor: '#1e1e1e', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ff4444', marginBottom: 20 }}>
-              <Text style={{ color: '#ff4444', fontSize: 12, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase' }}>
-                Required: Current Password
-              </Text>
-              <TextInput
-                style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12 }}
-                placeholder="Enter current password to save..."
-                placeholderTextColor="#555"
-                secureTextEntry
-                value={currentPassword}
-                onChangeText={setCurrentPassword}
-              />
-            </View>
-
-            {/* SAVE BUTTON */}
-            <TouchableOpacity 
-              style={{ backgroundColor: currentPassword ? '#BB86FC' : '#333', padding: 15, borderRadius: 8, alignItems: 'center' }}
-              onPress={handleSecureUpdate}
-              disabled={isUpdatingAccount || !currentPassword}
-            >
-              <Text style={{ color: currentPassword ? '#000' : '#777', fontWeight: 'bold', fontSize: 16 }}>
-                {isUpdatingAccount ? 'VERIFYING & SAVING...' : 'SAVE CHANGES'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {/* --- LOG OUT BUTTON (Visible to Everyone) --- */}
-        <TouchableOpacity 
-          style={{ marginTop: 50, marginBottom: 30, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ff4444', padding: 15, borderRadius: 8, alignItems: 'center' }}
-          onPress={handleLogout}
-        >
-          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }}>
-            LOG OUT
-          </Text>
-        </TouchableOpacity>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

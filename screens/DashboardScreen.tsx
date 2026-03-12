@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
   StyleSheet, Text, View, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform 
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView 
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
@@ -17,7 +17,7 @@ export default function DashboardScreen({ route, navigation }: any) {
   
   const [bets, setBets] = useState<any[]>([]);
   const [p2pBets, setP2pBets] = useState<any[]>([]);
-  const [blindMatchups, setBlindMatchups] = useState<any[]>([]); // NEW
+  const [blindMatchups, setBlindMatchups] = useState<any[]>([]); 
   const [myWagers, setMyWagers] = useState<any[]>([]);
   const [myBets, setMyBets] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
@@ -28,25 +28,109 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [wagerAmount, setWagerAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // --- NEW: PITCH MODAL STATES ---
   const [suggestModalVisible, setSuggestModalVisible] = useState(false);
-  const [pitchMode, setPitchMode] = useState<'idea' | 'challenge'>('idea'); 
-  const [suggestionText, setSuggestionText] = useState('');
+  const [pitchBetType, setPitchBetType] = useState<'prop' | 'over_under' | 'p2p' | 'blind'>('prop');
+  const [pitchQuestion, setPitchQuestion] = useState('');
+  const [pitchOptions, setPitchOptions] = useState([{ id: '1', label: '', odds: '' }, { id: '2', label: '', odds: '' }]);
   const [pitchOptionA, setPitchOptionA] = useState('Yes');
   const [pitchOptionB, setPitchOptionB] = useState('No');
   const [pitchWager, setPitchWager] = useState('100');
   const [pitchMultiplier, setPitchMultiplier] = useState('2.0');
+  const [pitchBlindBase, setPitchBlindBase] = useState('100');
+  const [pitchBlindMultiplier, setPitchBlindMultiplier] = useState('2.0');
+  const [pitchBlindPercent, setPitchBlindPercent] = useState('50');
+  const [pitchP2PPercent, setPitchP2PPercent] = useState('50');
 
   const [myBetsModalVisible, setMyBetsModalVisible] = useState(false);
   const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
   const [joinCode, setJoinCode] = useState<string>('');
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
-  // --- NEW: BLIND BID STATES ---
   const [blindModalVisible, setBlindModalVisible] = useState(false);
   const [selectedMatchup, setSelectedMatchup] = useState<any>(null);
   const [blindBid, setBlindBid] = useState('2.0');
   const [blindBidPercent, setBlindBidPercent] = useState('50');
 
+  const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  // --- PITCH MODAL HELPER FUNCTIONS ---
+  const handleTogglePitchBetType = (type: any) => {
+    setPitchBetType(type);
+    
+    // Automatically fill in Over/Under if they select O/U
+    if (type === 'over_under') {
+      setPitchOptions([
+        { id: '1', label: 'Over', odds: '' },
+        { id: '2', label: 'Under', odds: '' }
+      ]);
+    } 
+    // Clear it out if they switch back to a standard Prop bet
+    else if (type === 'prop') {
+      setPitchOptions([
+        { id: '1', label: '', odds: '' },
+        { id: '2', label: '', odds: '' }
+      ]);
+    }
+  };
+  
+  // --- INPUT SANITIZER ---
+  const sanitizeNumber = (value: string) => {
+    let sanitized = value.replace(/[^0-9.]/g, '');
+    if (sanitized.split('.').length > 2) {
+      sanitized = sanitized.substring(0, sanitized.length - 1);
+    }
+    return sanitized;
+  };
+
+  const updatePitchP2PMultiplier = (val: string) => {
+    const sanitized = sanitizeNumber(val);
+    setPitchMultiplier(sanitized);
+    const num = parseFloat(sanitized);
+    if (num >= 1) setPitchP2PPercent(((1 / num) * 100).toFixed(0));
+  };
+
+  const updatePitchP2PPercent = (val: string) => {
+    const sanitized = sanitizeNumber(val);
+    setPitchP2PPercent(sanitized);
+    const num = parseFloat(sanitized);
+    if (num > 0 && num <= 100) setPitchMultiplier((100 / num).toFixed(2));
+  };
+
+  const handleAddPitchOption = () => {
+    setPitchOptions([...pitchOptions, { id: Date.now().toString(), label: '', odds: '' }]);
+  };
+
+  const updatePitchOption = (id: string, field: 'label' | 'odds', value: string) => {
+    if (field === 'odds') {
+      // Instantly strip out anything that isn't a number or a decimal point
+      let sanitized = value.replace(/[^0-9.]/g, '');
+      
+      // Prevent users from typing multiple decimals (e.g., "2.5.5")
+      if (sanitized.split('.').length > 2) {
+        sanitized = sanitized.substring(0, sanitized.length - 1);
+      }
+      setPitchOptions(pitchOptions.map(o => o.id === id ? { ...o, [field]: sanitized } : o));
+    } else {
+      setPitchOptions(pitchOptions.map(o => o.id === id ? { ...o, [field]: value } : o));
+    }
+  };
+
+  const updatePitchBlindMultiplier = (val: string) => {
+    const sanitized = sanitizeNumber(val);
+    setPitchBlindMultiplier(sanitized);
+    const num = parseFloat(sanitized);
+    if (num >= 1) setPitchBlindPercent(((1 / num) * 100).toFixed(0));
+  };
+
+  const updatePitchBlindPercent = (val: string) => {
+    const sanitized = sanitizeNumber(val);
+    setPitchBlindPercent(sanitized);
+    const num = parseFloat(sanitized);
+    if (num > 0 && num <= 100) setPitchBlindMultiplier((100 / num).toFixed(2));
+  };
+
+  // --- BLIND BID HELPER FUNCTIONS ---
   const syncBidFromMulti = (val: string) => {
     setBlindBid(val);
     const num = parseFloat(val);
@@ -59,15 +143,12 @@ export default function DashboardScreen({ route, navigation }: any) {
     if (num > 0 && num <= 100) setBlindBid((100 / num).toFixed(2));
   };
 
-  const [pendingApprovals, setPendingApprovals] = useState(0);
-  
-
   useEffect(() => {
     let walletSub: any;
     let betsSub: any;
     let campaignSub: any;
     let p2pSub: any;
-    let blindSub: any; // NEW
+    let blindSub: any;
 
     async function setupRealtime() {
       const storedUserId = await AsyncStorage.getItem('userId');
@@ -83,12 +164,10 @@ export default function DashboardScreen({ route, navigation }: any) {
         ).subscribe();
       p2pSub = supabase.channel('public:p2p_dashboard')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => loadBoard()).subscribe();
-      blindSub = supabase.channel('public:blind_dashboard') // NEW
+      blindSub = supabase.channel('public:blind_dashboard') 
         .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => loadBoard()).subscribe();
       const proposalSub = supabase.channel('public:proposal_dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => {
-          loadBoard(); // This re-runs the count fetch above!
-        }).subscribe();
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => loadBoard()).subscribe();
     }
 
     loadBoard();
@@ -112,7 +191,6 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   async function loadBoard() {
     try {
-      // 1. GET USER & CAMPAIGN IDs
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
@@ -120,7 +198,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       setUserId(storedUserId); 
       setCampaignId(storedCampaignId);
 
-      // 2. FETCH CAMPAIGN & WALLET STATUS
       const { data: campaignData } = await supabase.from('campaigns').select('join_code, status').eq('id', storedCampaignId).single();
       if (campaignData?.status === 'closed') {
         setLoading(false);
@@ -134,26 +211,17 @@ export default function DashboardScreen({ route, navigation }: any) {
         setUserRole(participantData.role); 
       }
 
-      // 3. FETCH THE ACTIVE EVENT
       const { data: eventData } = await supabase.from('events').select('*').eq('campaign_id', storedCampaignId).eq('status', 'live').single();
-      
-      // If there is no live event, stop loading and return early
       if (!eventData) return setLoading(false);
       setActiveEvent(eventData);
 
-      // --- 4. NEW: FETCH PENDING APPROVALS COUNT (Safe to use eventData.id now!) ---
-      const { count, error: countError } = await supabase
-        .from('guest_proposals')
-        .select('id', { count: 'exact' })
-        .eq('event_id', eventData.id) 
-        .eq('status', 'pending');
+      // Fetch pending approvals
+      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).eq('event_id', eventData.id).eq('status', 'pending');
+      const { count: pendingP2P } = await supabase.from('p2p_prop_bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
+      const { count: pendingBlind } = await supabase.from('blind_matchups').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
+      
+      setPendingApprovals((pendingProps || 0) + (pendingP2P || 0) + (pendingBlind || 0));
 
-      if (!countError && count !== null) {
-        setPendingApprovals(count);
-      }
-      // -----------------------------------------------------------------------------
-
-      // 5. FETCH ALL BOARD BETS (Standard, P2P, and Blind)
       const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('event_id', eventData.id).in('status', ['open', 'locked']);
       if (betsData) setBets(betsData);
 
@@ -163,7 +231,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']);
       if (blindData) setBlindMatchups(blindData);
 
-      // 6. FETCH WAGERS & STANDINGS
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
       if (wagersData) {
         const eventWagers = wagersData.filter((w: any) => w.bets?.event_id === eventData.id);
@@ -181,7 +248,6 @@ export default function DashboardScreen({ route, navigation }: any) {
     }
   }
 
-  // ... (Keep existing openBetSlip, submitWager, handleClaimP2P, executeClaim, submitSuggestion, handleSwitchEvent intact) ...
   function openBetSlip(bet: any, option?: any) {
     const cleanBetId = String(bet.id).toLowerCase().trim();
     const existingWager = myWagers.find((w: any) => String(w.bet_id).toLowerCase().trim() === cleanBetId);
@@ -277,14 +343,10 @@ export default function DashboardScreen({ route, navigation }: any) {
     } finally { setIsSubmitting(false); }
   }
 
-  
-
-  // --- NEW: BLIND MATCH LOGIC ---
   async function submitBlindBid() {
     const bidValue = parseFloat(blindBid);
     if (isNaN(bidValue) || bidValue <= 1) return Alert.alert("Invalid", "Multiplier bid must be greater than 1.0x");
     
-    // Safety check for wallet balance (worst case scenario: they are the underdog and have to pay riskIfUnderdog)
     const base = selectedMatchup.base_amount;
     const maxRisk = Math.max(base, (base * bidValue) - base);
     if (maxRisk > walletBalance) {
@@ -298,7 +360,6 @@ export default function DashboardScreen({ route, navigation }: any) {
         p_user_2_id: userId,
         p_user_2_bid: bidValue
       });
-      
       if (error) throw error;
       
       setBlindModalVisible(false);
@@ -311,66 +372,135 @@ export default function DashboardScreen({ route, navigation }: any) {
     }
   }
 
-  async function submitSuggestion() {
-    if (pitchMode === 'idea') {
-      if (!suggestionText.trim()) return Alert.alert('Error', 'Type an idea first!');
-      setIsSubmitting(true);
-      try {
-        await supabase.from('guest_proposals').insert([{
+  // --- NEW: HANDLE THE PITCH SUBMISSION ---
+  async function handleSubmitPitch() {
+    if (!pitchQuestion.trim()) return Alert.alert('Error', 'Please enter a question or scenario.');
+    
+    setIsSubmitting(true);
+    try {
+      if (pitchBetType === 'prop' || pitchBetType === 'over_under') {
+        // 🚨 PRE-FLIGHT CHECK: Validate everything BEFORE hitting the database!
+        const validOptions = pitchOptions.filter(o => o.label.trim() !== '');
+        for (const opt of validOptions) {
+          const oddsValue = parseFloat(opt.odds);
+          if (isNaN(oddsValue) || oddsValue <= 1) {
+            setIsSubmitting(false);
+            const msg = `Please enter valid odds (greater than 1.0) for "${opt.label}".`;
+            return Platform.OS === 'web' ? window.alert(`Invalid Odds\n\n${msg}`) : Alert.alert('Invalid Odds', msg);
+          }
+        }
+        if (validOptions.length < 2) {
+          setIsSubmitting(false);
+          return Alert.alert('Hold Up', 'You need at least two options for this bet.');
+        }
+
+        for (const opt of validOptions) {
+          const oddsValue = parseFloat(opt.odds);
+          // Odds must be a real number and greater than 1.0 to make sense
+          if (isNaN(oddsValue) || oddsValue <= 1) {
+            setIsSubmitting(false);
+            return Alert.alert('Invalid Odds', `Please enter valid odds (greater than 1.0) for "${opt.label}".`);
+          }
+        }
+
+        // If it passes the checks, it's safe to insert!
+        const { data: betData, error: betError } = await supabase.from('bets').insert([{
           event_id: activeEvent?.id,
-          user_id: userId,
-          suggestion: suggestionText,
-          status: 'pending'
-        }]);
-        setSuggestionText('');
-        setSuggestModalVisible(false);
-        Alert.alert('Sent!', 'Your idea was sent to the host.');
-      } catch (error: any) { 
-        Alert.alert('Error', error.message); 
-      } finally {
+          question: pitchQuestion,
+          type: pitchBetType,
+          status: 'pending', 
+          creator_id: userId 
+        }]).select().single();
+        
+        if (betError) throw betError;
+
+        // Insert the options
+        const optionsToInsert = validOptions.map(o => ({
+          bet_id: betData.id,
+          label: o.label,
+          multiplier: parseFloat(o.odds)
+        }));
+        await supabase.from('bet_options').insert(optionsToInsert);
+      }
+      else if (pitchBetType === 'p2p') {
+        const wagerAmt = parseFloat(pitchWager);
+        const multiAmt = parseFloat(pitchMultiplier);
+        if (isNaN(multiAmt) || multiAmt <= 1) {
         setIsSubmitting(false);
+        const msg = 'Multiplier must be greater than 1.0x';
+        return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
       }
-    } 
-    else {
-      if (!suggestionText.trim() || !pitchOptionA.trim() || !pitchOptionB.trim()) {
-        return Alert.alert('Error', 'Please fill out the scenario and both options.');
+
+        if (isNaN(wagerAmt) || wagerAmt <= 0) return Alert.alert('Invalid', 'Wager must be > 0');
+        if (isNaN(multiAmt) || multiAmt <= 1) {
+        setIsSubmitting(false);
+        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
       }
-      
-      const wagerAmt = parseFloat(pitchWager);
-      const multiAmt = parseFloat(pitchMultiplier);
+        if (wagerAmt > walletBalance) return Alert.alert('Insufficient Funds', 'Not enough points to back this pitch.');
 
-      if (isNaN(wagerAmt) || wagerAmt <= 0) return Alert.alert('Invalid', 'Wager must be > 0');
-      if (isNaN(multiAmt) || multiAmt <= 0) return Alert.alert('Invalid', 'Multiplier must be > 0');
-
-      setIsSubmitting(true);
-      try {
         const { error } = await supabase.from('p2p_prop_bets').insert([{
           campaign_id: campaignId,
           proposer_id: userId,
-          question: suggestionText,
+          question: pitchQuestion,
           option_a_label: pitchOptionA,
           option_b_label: pitchOptionB,
           wager_amount: wagerAmt,
           multiplier: multiAmt,
-          status: 'pending_approval' 
+          status: 'pending_approval' // 🚨 Keeps it off live board
         }]);
-
         if (error) throw error;
-
-        setSuggestionText('');
-        setPitchOptionA('Yes');
-        setPitchOptionB('No');
-        setPitchWager('100');
-        setPitchMultiplier('2.0');
-        setPitchMode('idea'); 
-        
-        setSuggestModalVisible(false);
-        Alert.alert('Sent!', 'Your challenge was sent to the host for approval.');
-      } catch (error: any) {
-        Alert.alert('Error', error.message);
-      } finally {
+      } 
+      else if (pitchBetType === 'blind') {
+        const base = parseFloat(pitchBlindBase);
+        const multiAmt = parseFloat(pitchBlindMultiplier); // <-- We already have the number here!
+        if (isNaN(multiAmt) || multiAmt <= 1) {
+          setIsSubmitting(false);
+          const msg = 'Multiplier must be greater than 1.0x';
+          return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
+        } 
+        if (isNaN(base) || base <= 0) return Alert.alert('Invalid', 'Base amount must be > 0');
+        if (isNaN(multiAmt) || multiAmt <= 1) {
         setIsSubmitting(false);
+        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
       }
+
+      // Inside handleSubmitPitch -> blind block:
+      const multi = parseFloat(pitchBlindMultiplier);
+      if (isNaN(multi) || multi <= 1) {
+        setIsSubmitting(false);
+        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
+      }
+        const maxRisk = Math.max(Math.trunc(base), Math.trunc((base * multi) - base));
+        if (maxRisk > walletBalance) return Alert.alert('Insufficient Funds', 'Not enough points to back this pitch.');
+
+        const { error } = await supabase.from('blind_matchups').insert([{
+          campaign_id: campaignId,
+          user_1_id: userId,
+          question: pitchQuestion,
+          side_a_label: pitchOptionA,
+          side_b_label: pitchOptionB,
+          base_amount: base,
+          user_1_bid_multiplier: multi, // 🚨 ADD THIS LINE!
+          status: 'pending_approval'
+        }]);
+        if (error) throw error;
+      }
+
+      // Reset the form
+      setPitchQuestion('');
+      setPitchOptions([{ id: '1', label: '', odds: '' }, { id: '2', label: '', odds: '' }]);
+      setPitchOptionA('Yes'); setPitchOptionB('No');
+      setPitchWager('100'); setPitchMultiplier('2.0');
+      setPitchBlindBase('100'); setPitchBlindMultiplier('2.0'); setPitchBlindPercent('50');
+      setPitchP2PPercent('50');
+      
+      setSuggestModalVisible(false);
+      Alert.alert('Pitch Sent!', 'Your bet has been sent to the Host for approval.');
+      loadBoard();
+    } catch (err: any) {
+      Alert.alert('Error', err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -379,47 +509,31 @@ export default function DashboardScreen({ route, navigation }: any) {
       const savedUserId = await AsyncStorage.getItem('userId');
       const savedUserName = await AsyncStorage.getItem('userName');
       
-      // Clear the active lobby data
       await AsyncStorage.removeItem('campaignId');
       await AsyncStorage.removeItem('campaignName');
       
-      // Use replace() for a smoother, crash-free transition on Native Android
       if (navigation.replace) {
         navigation.replace('Campaigns', { userId: savedUserId, userName: savedUserName });
       } else {
-        // Fallback for Web if replace isn't supported by the router version
-        navigation.reset({ 
-          index: 0, 
-          routes: [{ name: 'Campaigns', params: { userId: savedUserId, userName: savedUserName } }] 
-        });
+        navigation.reset({ index: 0, routes: [{ name: 'Campaigns', params: { userId: savedUserId, userName: savedUserName } }] });
       }
     } catch (error: any) {
-      // Force Android to show us the error instead of failing silently
       Alert.alert("Navigation Error", error.message || "Failed to leave the board.");
-      console.error("Error switching events:", error);
     }
   }
 
   const potentialWin = wagerAmount ? Math.floor(parseInt(wagerAmount) * (selectedOption?.multiplier || 1)) : 0;
-  
-  // Blind Math Preview values
-  const blindBase = selectedMatchup?.base_amount || 100;
-  const myBlindBid = parseFloat(blindBid) || 2.0;
-  const riskIfFav = blindBase;
-  const riskIfDog = Math.trunc((blindBase * myBlindBid) - blindBase);
 
   const renderBetCard = ({ item }: { item: any }) => {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
     const isOpen = item.status === 'open';
     const isLocked = item.status === 'locked';
 
-    // Helper function to find the user's name from our Standings data
     const getPlayerName = (uid: string) => {
       const player = standings.find(s => s.user_id === uid);
       return player?.users?.display_name || 'Someone';
     };
 
-    // --- BLIND BET RENDERER ---
     if (item.isBlind) {
       const isCreator = item.user_1_id === userId;
       const isMatched = item.status === 'matched' || item.status === 'resolved';
@@ -439,19 +553,15 @@ export default function DashboardScreen({ route, navigation }: any) {
                 Match Made! Final Odds: {Number(item.final_multiplier).toFixed(2)}x
               </Text>
               
-              {/* --- NEW: BLIND TICKET SUMMARY --- */}
-              {/* --- NEW: BLIND TICKET SUMMARY --- */}
               {item.side_a_user_id === userId || item.side_b_user_id === userId ? (
                 (() => {
                   const isA = item.side_a_user_id === userId;
                   const oppId = isA ? item.side_b_user_id : item.side_a_user_id;
                   const oppName = getPlayerName(oppId);
                   
-                  // STRICT PARSING: Force Supabase strings into real numbers
                   const baseAmt = parseFloat(item.base_amount) || 0;
                   const finalMulti = parseFloat(item.final_multiplier) || 0;
 
-                  // Safe Math
                   const myWager = isA ? baseAmt : Math.trunc((baseAmt * finalMulti) - baseAmt);
                   const myPick = isA ? item.side_a_label : item.side_b_label;
                   const pot = Math.trunc(baseAmt * finalMulti);
@@ -498,7 +608,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       );
     }
 
-    // --- P2P BET RENDERER ---
     if (item.isP2P) {
       const iClaimedA = item.side_a_user_id === userId;
       const iClaimedB = item.side_b_user_id === userId;
@@ -543,7 +652,6 @@ export default function DashboardScreen({ route, navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          {/* --- NEW: P2P TICKET SUMMARY --- */}
           {hasAction && (
             <View style={[styles.lockedWagerCard, { borderColor: '#FFD700', marginTop: 15 }]}>
               <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -572,7 +680,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       );
     }
     
-    // --- HOUSE BET RENDERER ---
     return (
       <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -615,7 +722,6 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#00D084" /></View>;
 
-  // Combine lists for My Live Tickets Modal (NOW INCLUDES BLIND BETS)
   const combinedTickets = [
     ...blindMatchups
       .filter(b => String(b.user_1_id) === String(userId) || String(b.user_2_id) === String(userId))
@@ -636,7 +742,6 @@ export default function DashboardScreen({ route, navigation }: any) {
     <View style={styles.container}>
       {/* --- HEADER --- */}
       <View style={styles.headerContainer}>
-        {/* ... (Existing Header UI) ... */}
         <View style={styles.topNavRow}>
           <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
             <Text style={styles.navPillLeaveText}>← Leave</Text>
@@ -659,7 +764,6 @@ export default function DashboardScreen({ route, navigation }: any) {
                   <Text style={styles.navPillHostText}>👑 Host</Text>
                 </TouchableOpacity>
                 
-                {/* --- NEW: THE NOTIFICATION BADGE --- */}
                 {pendingApprovals > 0 && (
                   <View style={styles.badgeContainer}>
                     <Text style={styles.badgeText}>
@@ -741,7 +845,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {/* --- NEW: BLIND BID MODAL --- */}
+      {/* --- BLIND BID MODAL --- */}
       <Modal visible={blindModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.betSlipContainer}>
@@ -753,11 +857,9 @@ export default function DashboardScreen({ route, navigation }: any) {
                 const myBid = parseFloat(blindBid) || 1.0;
                 const currentBalance = walletBalance || 0;
 
-                // Math for the preview
                 const estTotalPot = Math.trunc(baseAmt * myBid);
                 const estUnderdogRisk = Math.trunc(estTotalPot - baseAmt);
                 
-                // Safety Check: Can they afford the worst-case scenario?
                 const maxPossibleRisk = Math.max(baseAmt, estUnderdogRisk);
                 const isOverleveraged = maxPossibleRisk > currentBalance;
 
@@ -765,13 +867,11 @@ export default function DashboardScreen({ route, navigation }: any) {
                   <>
                     <Text style={[styles.modalTitle, { color: '#BB86FC' }]}>Place Your Blind Bid</Text>
                     
-                    {/* MATCHUP HEADER */}
                     <View style={{ marginBottom: 20, alignItems: 'center' }}>
                       <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedMatchup?.question}</Text>
                       <Text style={{ color: '#BB86FC', fontSize: 14 }}>{sideA} vs {sideB}</Text>
                     </View>
 
-                    {/* DUAL INPUT ROW */}
                     <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
@@ -796,20 +896,17 @@ export default function DashboardScreen({ route, navigation }: any) {
                       </View>
                     </View>
 
-                    {/* DYNAMIC PAYOUT PREVIEW */}
                     <View style={[styles.previewContainer, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)', padding: 15 }]}>
                       <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
                         {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'Potential Outcomes (Estimates*)'}
                       </Text>
                       
-                      {/* SCENARIO A */}
                       <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 15 }}>
                         <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 12 }}>If you bid LOWER (You get {sideA}):</Text>
                         <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: '#fff'}}>{baseAmt} pts</Text></Text>
                         <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
                       </View>
 
-                      {/* SCENARIO B */}
                       <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
                         <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 12 }}>If you bid HIGHER (You get {sideB}):</Text>
                         <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: isOverleveraged ? '#ff4444' : '#fff', fontWeight: isOverleveraged ? 'bold' : 'normal'}}>{estUnderdogRisk} pts</Text></Text>
@@ -893,44 +990,228 @@ export default function DashboardScreen({ route, navigation }: any) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* --- PITCH BET / SUGGESTION MODAL --- */}
-      <Modal visible={suggestModalVisible} transparent={true} animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlayCenter}>
-          <View style={styles.gradeModalContent}>
-            <View style={styles.typeSelectorRow}>
-              <TouchableOpacity style={[styles.typeBtn, pitchMode === 'idea' && styles.typeBtnActive]} onPress={() => setPitchMode('idea')}>
-                <Text style={[styles.typeBtnText, pitchMode === 'idea' && styles.typeBtnTextActive]}>💡 Suggest Idea</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, pitchMode === 'challenge' && styles.typeBtnActive]} onPress={() => setPitchMode('challenge')}>
-                <Text style={[styles.typeBtnText, pitchMode === 'challenge' && styles.typeBtnTextActive]}>🥊 Create Challenge</Text>
+      {/* --- GUEST: NEW PITCH BET MODAL --- */}
+      <Modal visible={suggestModalVisible} transparent={true} animationType="slide">
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 }]}>
+            <View style={styles.slipHeaderRow}>
+              <Text style={styles.slipTitle}>Pitch a Bet</Text>
+              <TouchableOpacity onPress={() => setSuggestModalVisible(false)}>
+                <Text style={styles.closeSlipText}>Cancel</Text>
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalTitle}>{pitchMode === 'idea' ? 'Pitch an Idea' : 'Set the Terms'}</Text>
-            {pitchMode === 'idea' ? (
-              <TextInput style={[styles.pitchInput, { minHeight: 100 }]} placeholder="e.g., Will Chris go all-in blind?" placeholderTextColor="#666" value={suggestionText} onChangeText={setSuggestionText} multiline={true} />
-            ) : (
-              <>
-                <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                <TextInput style={[styles.pitchInput, { minHeight: 60, marginBottom: 15 }]} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={suggestionText} onChangeText={setSuggestionText} multiline={true} />
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
-                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk (Side A)</Text><TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={setPitchWager} /></View>
-                  <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (Side A)</Text><TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={setPitchMultiplier} /></View>
-                </View>
-                <View style={styles.mathBox}>
-                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(pitchWager) || 0)} pts</Text></Text>
-                  <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>Side B Must Risk: <Text style={{color: '#fff'}}>{Math.trunc((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)).toFixed(0)} pts</Text></Text>
-                  <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>Total Pot: {Math.trunc((parseFloat(pitchWager) || 0) + ((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))).toFixed(0)} pts</Text>
-                </View>
-              </>
-            )}
-            <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitSuggestion} disabled={isSubmitting}>
-              <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending...' : 'Send to Host'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setSuggestModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
+
+            <View style={styles.typeSelectorRow}>
+              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'prop' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('prop')}>
+                <Text style={[styles.typeBtnText, pitchBetType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'over_under' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('over_under')}>
+                <Text style={[styles.typeBtnText, pitchBetType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'p2p' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('p2p')}>
+                <Text style={[styles.typeBtnText, pitchBetType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleTogglePitchBetType('blind')}>
+                <Text style={[styles.typeBtnText, pitchBetType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {pitchBetType === 'blind' ? (
+                <>
+                  <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                  <TextInput style={styles.p2pInput} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
+                      <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchBlindBase} onChangeText={(text) => setPitchBlindBase(sanitizeNumber(text))} placeholder="100" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
+                      <TextInput 
+                        style={styles.p2pInput}
+                        keyboardType="decimal-pad"
+                        value={pitchBlindMultiplier}
+                        onChangeText={updatePitchBlindMultiplier}
+                      />
+                    </View>
+                    
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TextInput 
+                          style={[styles.p2pInput, { flex: 1 }]}
+                          keyboardType="number-pad"
+                          value={pitchBlindPercent}
+                          onChangeText={updatePitchBlindPercent}
+                        />
+                        <Text style={{ color: '#fff', position: 'absolute', right: 15, top: 15, fontWeight: 'bold' }}>%</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {(() => {
+                    const base = parseFloat(pitchBlindBase) || 0;
+                    const multi = parseFloat(pitchBlindMultiplier) || 0;
+                    const riskA = Math.trunc(base);
+                    const riskB = Math.trunc((base * multi) - base);
+                    const maxRisk = Math.max(riskA, riskB);
+                    
+                    const currentBalance = walletBalance || 0;
+                    const isOverleveraged = maxRisk > currentBalance;
+                    const pot = Math.trunc(base * multi);
+
+                    return (
+                      <View style={[styles.mathBox, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: isOverleveraged ? 'rgba(255, 68, 68, 0.05)' : 'rgba(187, 134, 252, 0.05)' }]}>
+                        <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+                          {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'How Your Bid Shapes the Market'}
+                        </Text>
+                        
+                        <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
+                          You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{pitchBlindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+                        </Text>
+
+                        {/* --- SCENARIO A --- */}
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
+                          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario A: You secure {pitchOptionA || 'Team A'}</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • You Risk: <Text style={{color: (isOverleveraged && riskA > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                        </View>
+
+                        {/* --- SCENARIO B --- */}
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario B: You are pushed to {pitchOptionB || 'Team B'}</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • You Risk: <Text style={{color: (isOverleveraged && riskB > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
+                          </Text>
+                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                        </View>
+
+                        {isOverleveraged ? (
+                          <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
+                            You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
+                          </Text>
+                        ) : (
+                          <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
+                            *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()}
+                </>
+              ) : pitchBetType === 'p2p' ? (
+                <>
+                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                  <TextInput style={styles.p2pInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk</Text>
+                      <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={(text) => setPitchWager(sanitizeNumber(text))} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
+                      <TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <TextInput style={[styles.p2pInput, { flex: 1 }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
+                        <Text style={{ color: '#fff', position: 'absolute', right: 15, top: 15, fontWeight: 'bold' }}>%</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.mathBox}>
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                      Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(pitchWager) || 0)} pts</Text>
+                    </Text>
+                    
+                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                      Side B Must Risk: <Text style={{color: '#fff'}}>{Math.max(0, Math.trunc(((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)) - (parseFloat(pitchWager) || 0)))} pts</Text>
+                    </Text>
+                    
+                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
+                      Total Pot: {Math.trunc((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))} pts
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Question</Text>
+                  <TextInput style={styles.p2pInput} placeholder={pitchBetType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
+                  {pitchOptions.map((opt) => (
+                    <View key={opt.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                      <TextInput 
+                        style={[
+                          styles.p2pInput, 
+                          { flex: 2, marginBottom: 0 },
+                          // 🚨 Adds a grey background and text color if it's locked!
+                          pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' } 
+                        ]} 
+                        placeholder="e.g., William" 
+                        placeholderTextColor="#666" 
+                        value={opt.label} 
+                        onChangeText={(text) => updatePitchOption(opt.id, 'label', text)} 
+                        editable={pitchBetType !== 'over_under'} 
+                      />
+                      <TextInput style={[styles.p2pInput, { flex: 1, marginBottom: 0 }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
+                    </View>
+                  ))}
+
+                  {pitchBetType === 'prop' && (
+                    <TouchableOpacity style={{ backgroundColor: '#2a2a2a', padding: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#444', marginTop: 10 }} onPress={handleAddPitchOption}>
+                      <Text style={{ color: '#00D084', fontWeight: 'bold' }}>+ Add Another Option</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            {(() => {
+              let isOverleveraged = false;
+              const currentBalance = walletBalance || 0;
+
+              if (pitchBetType === 'p2p') {
+                isOverleveraged = Math.trunc(parseFloat(pitchWager) || 0) > currentBalance;
+              } else if (pitchBetType === 'blind') {
+                const base = parseFloat(pitchBlindBase) || 0;
+                const multi = parseFloat(pitchBlindMultiplier) || 0;
+                isOverleveraged = Math.max(Math.trunc(base), Math.trunc((base * multi) - base)) > currentBalance;
+              }
+
+              return (
+                <TouchableOpacity 
+                  style={[styles.confirmButton, { marginTop: 20 }, (isSubmitting || isOverleveraged) && { opacity: 0.5, backgroundColor: '#444' }]} 
+                  onPress={handleSubmitPitch} 
+                  disabled={isSubmitting || isOverleveraged}
+                >
+                  <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending to Host...' : 'Submit Pitch'}</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -946,13 +1227,12 @@ export default function DashboardScreen({ route, navigation }: any) {
               ListEmptyComponent={<Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No bets placed yet. Get in the action!</Text>}
               renderItem={({ item }) => {
                 const isP2P = item.type === 'p2p';
-                const isBlind = item.type === 'blind'; // NEW
+                const isBlind = item.type === 'blind'; 
                 let wagerStatus = item.status || 'pending'; 
                 let question, pick, odds, wagerAmt, potentialWin, opponentName;
                 let isA: boolean = false;
                 let oppId: string | null | undefined = null;
 
-                // --- BLIND TICKET LOGIC ---
                 if (isBlind) {
                   isA = String(item.side_a_user_id) === String(userId);
                   oppId = isA ? item.side_b_user_id : item.side_a_user_id;
@@ -970,7 +1250,6 @@ export default function DashboardScreen({ route, navigation }: any) {
                     question = item.question;
                     pick = isA ? item.side_a_label : item.side_b_label;
                     
-                    // STRICT PARSING
                     const baseAmt = parseFloat(item.base_amount) || 0;
                     const finalMulti = parseFloat(item.final_multiplier) || 0;
 
@@ -979,7 +1258,6 @@ export default function DashboardScreen({ route, navigation }: any) {
                     potentialWin = Math.trunc(baseAmt * finalMulti);
                   }
                 }
-                // --- EXISTING P2P & HOUSE TICKET LOGIC ---
                 else if (isP2P) {
                   isA = String(item.side_a_user_id) === String(userId);
                   oppId = isA ? item.side_b_user_id : item.side_a_user_id;
@@ -1042,7 +1320,6 @@ export default function DashboardScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  // --- BASE LAYOUT ---
   container: { flex: 1, backgroundColor: '#121212', padding: 15, paddingTop: 50 },
   headerContainer: { marginBottom: 15 },
   topNavRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
@@ -1052,7 +1329,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: '#00D084', marginTop: 5, fontWeight: '600' },
   balanceText: { fontSize: 16, color: '#a0a0a0', marginTop: 5 },
 
-  // --- NAV PILLS ---
   navPillLeave: { backgroundColor: '#2a2a2a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
   navPillLeaveText: { color: '#ff4444', fontWeight: 'bold', fontSize: 14 },
   navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
@@ -1064,7 +1340,6 @@ const styles = StyleSheet.create({
   pitchButton: { backgroundColor: '#00D084', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, shadowColor: '#00D084', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
   pitchButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 }, 
 
-  // --- BET CARDS ---
   betCard: { backgroundColor: '#1e1e1e', borderRadius: 12, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   betQuestion: { fontSize: 18, color: '#fff', fontWeight: 'bold', marginBottom: 15 },
   optionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -1077,7 +1352,6 @@ const styles = StyleSheet.create({
   statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, height: 22, justifyContent: 'center' },
   statusText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
-  // --- BOTTOM NAV & STANDINGS ---
   bottomNavBar: { flexDirection: 'row', backgroundColor: '#1e1e1e', borderTopWidth: 1, borderTopColor: '#333', marginHorizontal: -15, marginBottom: -15, paddingBottom: Platform.OS === 'ios' ? 25 : 0 },
   bottomNavBtn: { flex: 1, alignItems: 'center', paddingVertical: 15 },
   bottomNavBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 15, backgroundColor: 'rgba(0, 208, 132, 0.05)', borderTopWidth: 3, borderTopColor: '#00D084', marginTop: -1 },
@@ -1088,7 +1362,6 @@ const styles = StyleSheet.create({
   standingsName: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   standingsScore: { color: '#FFD700', fontSize: 18, fontWeight: 'bold' },
 
-  // --- MODALS (COMMON) ---
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
   centeredModalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.7)' },
@@ -1096,7 +1369,6 @@ const styles = StyleSheet.create({
   confirmButton: { backgroundColor: '#00D084', padding: 18, borderRadius: 10, alignItems: 'center' },
   confirmButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
 
-  // --- BET SLIP MODAL (HOUSE BETS) ---
   betSlipContainer: { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 },
   slipHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   slipTitle: { fontSize: 22, fontWeight: 'bold', color: '#fff' },
@@ -1112,7 +1384,7 @@ const styles = StyleSheet.create({
   payoutLabel: { color: '#a0a0a0', fontSize: 16 },
   payoutAmount: { color: '#00D084', fontSize: 20, fontWeight: 'bold' },
 
-  // --- PITCH/SUGGEST MODAL ---
+  modalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
   gradeModalContent: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15 },
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 20, textAlign: 'center' },
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4, borderWidth: 1, borderColor: '#333' },
@@ -1120,11 +1392,9 @@ const styles = StyleSheet.create({
   typeBtnActive: { backgroundColor: '#FFD700' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
-  pitchInput: { backgroundColor: '#121212', color: '#fff', fontSize: 18, borderRadius: 8, padding: 15, borderWidth: 1, borderColor: '#333', marginBottom: 20, minHeight: 100, textAlignVertical: 'top' },
   p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
 
-  // --- SHARE MODAL ---
   shareModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   shareModalTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginBottom: 10 },
   shareModalSub: { color: '#a0a0a0', fontSize: 14, textAlign: 'center', marginBottom: 25 },
@@ -1135,7 +1405,6 @@ const styles = StyleSheet.create({
   closeModalBtn: { paddingVertical: 10, width: '100%', alignItems: 'center' },
   closeModalText: { color: '#a0a0a0', fontSize: 16, fontWeight: 'bold' },
 
-  // --- MY BETS / RECEIPTS MODAL ---
   receiptCard: { backgroundColor: '#121212', padding: 15, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   receiptQuestion: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
   receiptPick: { color: '#FFD700', fontSize: 14, fontWeight: 'bold' },
@@ -1145,13 +1414,7 @@ const styles = StyleSheet.create({
   receiptWon: { color: '#00D084', fontSize: 14, fontWeight: 'bold' },
   receiptLost: { color: '#ff4444', fontSize: 14, fontWeight: 'bold' },
 
-  // --- BLIND MATCH PREVIEW ---
   previewContainer: { backgroundColor: 'rgba(187, 134, 252, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#BB86FC', marginVertical: 15 },
-  previewTitle: { color: '#BB86FC', fontWeight: 'bold', marginBottom: 10 },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  previewText: { color: '#a0a0a0' },
-  previewRisk: { color: '#fff', fontWeight: 'bold' },
-  disclaimer: { color: '#666', fontSize: 10, fontStyle: 'italic', marginTop: 10, textAlign: 'center' },
   badgeContainer: {
     position: 'absolute',
     top: -5,
@@ -1163,7 +1426,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#121212', // Matches your app's dark background to create a cutout effect
+    borderColor: '#121212',
     paddingHorizontal: 4,
     zIndex: 10,
   },

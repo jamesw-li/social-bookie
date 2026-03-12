@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -195,102 +195,105 @@ export default function CampaignScreen({ route, navigation }: any) {
     }
   }
   return (
-    <View style={styles.container}>
-      
-      {/* --- STATIC HEADER --- */}
-      <View style={styles.header}>
-        {/* --- HEADER ROW --- */}
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>My Campaigns</Text>
-            <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
-          </View>
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: '#121212' }} // Background color prevents white flashes
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined} // iOS uses padding, Android uses native resize
+    >
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1 }} // Forces scroll view to fill the screen
+        keyboardShouldPersistTaps="handled" // Lets buttons work while keyboard is open
+        bounces={false} // Stops iOS from "rubber-banding" the white space
+      >
+        <View style={[styles.container, { flex: 1 }]}>
           
-          {/* UPDATED NAVIGATION HERE */}
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
-            style={{ padding: 5 }}
-          >
-            <Ionicons name="settings-outline" size={28} color="#BB86FC" />
-          </TouchableOpacity>
-        </View>
-          
-        {/* NEW: Join via Code Box */}
-        <View style={styles.joinBox}>
-          <TextInput
-            style={styles.joinInput}
-            placeholder="Enter 6-Digit Code"
-            placeholderTextColor="#666"
-            autoCapitalize="characters"
-            maxLength={6}
-            value={joinCode}
-            onChangeText={setJoinCode}
-          />
-     
-          <TouchableOpacity 
-            style={[styles.joinBtn, (!joinCode || isJoining) && { opacity: 0.5 }]} 
-            onPress={handleJoinWithCode}
-            disabled={!joinCode || isJoining}
-          >
-            <Text style={styles.joinBtnText}>{isJoining ? '...' : 'Join'}</Text>
-          </TouchableOpacity>
-          
-        </View>
-
+          {/* --- STATIC HEADER --- */}
+          <View style={styles.header}>
+            {/* --- HEADER ROW --- */}
+            <View style={styles.headerRow}>
+              <View>
+                <Text style={styles.title}>My Campaigns</Text>
+                <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+              </View>
+              
+              {/* UPDATED NAVIGATION HERE */}
+              <TouchableOpacity 
+                onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
+                style={{ padding: 5 }}
+              >
+                <Ionicons name="settings-outline" size={28} color="#BB86FC" />
+              </TouchableOpacity>
+            </View>
+              
+            {/* NEW: Join via Code Box */}
+            <View style={styles.joinBox}>
+              <TextInput
+                style={styles.joinInput}
+                placeholder="Enter 6-Digit Code"
+                placeholderTextColor="#666"
+                autoCapitalize="characters"
+                maxLength={6}
+                value={joinCode}
+                onChangeText={setJoinCode}
+              />
         
-  
-          <>
-            <Text style={styles.subtitle}>Or create your own board:</Text>
-            <TouchableOpacity 
-              style={styles.createButton} 
-              onPress={() => navigation.navigate('CreateBoard')}
-            >
-              <Text style={styles.createButtonText}>+ Host a New Game</Text>
-            </TouchableOpacity>
-          </>
-      </View>
-
-      {/* --- SCROLLABLE ZONE 1: LIVE ACTION --- */}
-      <Text style={styles.sectionTitle}>Live Action</Text>
-      <View style={{ flex: 1, marginBottom: 20 }}>
-        {activeCampaigns.length === 0 ? (
-          <Text style={styles.emptyText}>No active events right now.</Text>
-        ) : (
-          <FlatList
-            data={activeCampaigns}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.campaignCard} onPress={() => selectCampaign(item)}>
-                <Text style={styles.campaignName}>{item.name}</Text>
-                <Text style={{ color: '#00D084', fontWeight: 'bold' }}>🟢 LIVE</Text>
+              <TouchableOpacity 
+                style={[styles.joinBtn, (!joinCode || isJoining) && { opacity: 0.5 }]} 
+                onPress={handleJoinWithCode}
+                disabled={!joinCode || isJoining}
+              >
+                <Text style={styles.joinBtnText}>{isJoining ? '...' : 'Join'}</Text>
               </TouchableOpacity>
-            )}
-          />
-        )}
-      </View>
+              
+            </View>
 
-      {/* --- SCROLLABLE ZONE 2: HALL OF FAME --- */}
-      <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Hall of Fame</Text>
-      <View style={{ flex: 1 }}>
-        {closedCampaigns.length === 0 ? (
-          <Text style={styles.emptyText}>No archived events yet.</Text>
-        ) : (
-          <FlatList
-            data={closedCampaigns}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={[styles.campaignCard, { borderColor: '#444' }]} onPress={() => selectCampaign(item)}>
-                <Text style={[styles.campaignName, { color: '#a0a0a0' }]}>{item.name}</Text>
-                <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>🛑 CLOSED</Text>
-              </TouchableOpacity>
+            
+            {!isAnonymous && (
+              <>
+                <Text style={styles.subtitle}>Or create your own board:</Text>
+                <TouchableOpacity 
+                  style={styles.createButton} 
+                  onPress={() => navigation.navigate('CreateGame')}
+                >
+                  <Text style={styles.createButtonText}>+ Host a New Game</Text>
+                </TouchableOpacity>
+              </>
             )}
-          />
-        )}
-      </View>
+          </View>
 
-    </View>
+          {/* --- ZONE 1: LIVE ACTION (Mapped instead of FlatList) --- */}
+          <Text style={styles.sectionTitle}>Live Action</Text>
+          <View style={{ flex: 1, marginBottom: 20 }}>
+            {activeCampaigns.length === 0 ? (
+              <Text style={styles.emptyText}>No active events right now.</Text>
+            ) : (
+              activeCampaigns.map((item) => (
+                <TouchableOpacity key={item.id} style={styles.campaignCard} onPress={() => selectCampaign(item)}>
+                  <Text style={styles.campaignName}>{item.name}</Text>
+                  <Text style={{ color: '#00D084', fontWeight: 'bold' }}>🟢 LIVE</Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+
+          {/* --- ZONE 2: HALL OF FAME (Mapped instead of FlatList) --- */}
+          <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Hall of Fame</Text>
+          <View style={{ flex: 1 }}>
+            {closedCampaigns.length === 0 ? (
+              <Text style={styles.emptyText}>No archived events yet.</Text>
+            ) : (
+              closedCampaigns.map((item) => (
+                <TouchableOpacity key={item.id} style={[styles.campaignCard, { borderColor: '#444' }]} onPress={() => selectCampaign(item)}>
+                  <Text style={[styles.campaignName, { color: '#a0a0a0' }]}>{item.name}</Text>
+                  <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>🛑 CLOSED</Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
