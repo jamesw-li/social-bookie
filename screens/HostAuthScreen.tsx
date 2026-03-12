@@ -103,9 +103,28 @@ export default function HostAuthScreen({ route, navigation }: any) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={styles.innerContainer} keyboardShouldPersistTaps="handled">
-        
+    <KeyboardAvoidingView 
+  // 🚨 1. The wrapper MUST have flex: 1 and your dark background color
+  style={{ flex: 1, backgroundColor: '#121212' }} 
+  
+  // 🚨 2. Use 'padding' for iOS and 'height' for Android
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+  
+  // 🚨 3. The Offset: This tells it to push up a little extra to clear the home bar/notch. 
+  // (You might need to tweak these numbers, usually between 20 and 60)
+  keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20} 
+>
+  <ScrollView 
+    // 🚨 4. The ScrollView itself needs to flex to fill the KeyboardAvoidingView
+    style={{ flex: 1 }} 
+    
+    // 🚨 5. flexGrow: 1 ensures the content stretches, and justifyContent: 'center' 
+    // helps dynamically push the content up when the keyboard appears
+    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25 }} 
+    
+    keyboardShouldPersistTaps="handled"
+    bounces={false} // Optional: stops the bouncy effect on iOS which can sometimes look glitchy with keyboards
+  >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

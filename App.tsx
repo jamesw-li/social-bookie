@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -9,7 +9,6 @@ import CampaignScreen from './screens/CampaignScreen';
 import DashboardScreen from './screens/DashboardScreen';
 import HostScreen from './screens/HostScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
-import CreateBoardScreen from './screens/CreateBoardScreen';
 import FinalResultsScreen from './screens/FinalResultsScreen';
 import ReadOnlyDashboardScreen from './screens/ReadOnlyDashboardScreen';
 import SettingsScreen from './screens/SettingsScreen';
@@ -21,7 +20,13 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   const [initialRoute, setInitialRoute] = useState<string | null>(null);
   const [savedData, setSavedData] = useState<any>({});
-
+  const MyDarkTheme = {
+    ...DarkTheme,
+    colors: {
+      ...DarkTheme.colors,
+      background: '#121212', // 🚨 THE FIX: Paints the navigation canvas dark!
+    },
+  };
   useEffect(() => {
     checkLocalUser();
   }, []);
@@ -61,7 +66,7 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={MyDarkTheme}>
       <Stack.Navigator 
         initialRouteName={initialRoute}
         screenOptions={{
@@ -94,11 +99,7 @@ export default function App() {
           component={LeaderboardScreen} 
           options={{ title: 'Leaderboard', headerTintColor: '#00D084' }} 
         />
-        <Stack.Screen 
-          name="CreateBoard" 
-          component={CreateBoardScreen} 
-          options={{ title: 'New Game', headerTintColor: '#FFD700' }} 
-        />
+        
         {/* ... your other screens ... */}
       <Stack.Screen 
         name="FinalResults" 

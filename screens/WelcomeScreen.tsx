@@ -100,12 +100,16 @@ export default function WelcomeScreen({ navigation }: any) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === '<TouchableWithoutFeedback onPress={Keyboard.dismiss}>ios' ? 'padding' : 'height'}>
-      <ScrollView 
-        contentContainerStyle={{ flexGrow: 1 }} 
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+   <KeyboardAvoidingView 
+  style={styles.container} 
+  // 🚨 THE FIX: iOS gets padding, Android gets 'undefined' so it relies on the OS
+  behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+>
+  <ScrollView 
+    // 🚨 Bonus fix: Ensures tapping anywhere outside the text box instantly closes the keyboard
+    keyboardShouldPersistTaps="handled" 
+    contentContainerStyle={{ flexGrow: 1 }}
+  >
         <View style={styles.innerContainer}>
 
           <View style={styles.heroSection}>

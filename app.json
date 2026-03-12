@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "social-bookie",
+    "backgroundColor": "#121212",
     "slug": "social-bookie",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,16 +13,18 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "backgroundColor": "#121212"
     },
     "android": {
+      "backgroundColor": "#121212",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png",
       },
-      "softwareKeyboardLayoutMode": "resize",
+      "softwareKeyboardLayoutMode": "pan",
       "predictiveBackGestureEnabled": false,
       "package": "com.jameswli.socialbookie"
     },
