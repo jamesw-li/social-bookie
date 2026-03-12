@@ -27,17 +27,46 @@ export default function SettingsScreen({ route, navigation }: any) {
 
   useEffect(() => {
     async function checkUserStatus() {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user?.is_anonymous) {
-        setIsAnonymous(true);
-      } else if (user?.email) {
-        // They are a permanent user! Grab their email for the Profile Card.
-        setIsAnonymous(false);
-        setCurrentEmail(user.email);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        
+        // 🚨 Catch any silent Supabase errors
+        if (error) throw error;
+
+        if (user?.is_anonymous) {
+          setIsAnonymous(true);
+        } else if (user?.email) {
+          // They are a permanent user! Grab their email for the Profile Card.
+          setIsAnonymous(false);
+          setCurrentEmail(user.email);
+        } else {
+          // 🚨 THE FIX: The fallback! If they aren't anonymous but have no email payload
+          setIsAnonymous(false);
+          setCurrentEmail('Email unavailable'); 
+        }
+
+      } catch (error: any) {
+        console.error("Auth Check Error:", error.message);
+        
+        // 🚨 THE FIX: If the session is dead, clean up and boot them out!
+        if (error.message.includes('Auth session missing')) {
+          setCurrentEmail('Session expired');
+          
+          // Optional but recommended: Clear the stale phone memory
+          await AsyncStorage.removeItem('userId');
+          await AsyncStorage.removeItem('userName');
+          
+          // Send them back to the login screen
+          // navigation.reset({ index: 0, routes: [{ name: 'Login' }] }); 
+        } else {
+          setCurrentEmail('Error loading email'); 
+        }
+      } finally {
+        // 🚨 Guarantees the loading state ends, no matter what happens above
+        setIsCheckingAuth(false);
       }
-      setIsCheckingAuth(false);
     }
+    
     checkUserStatus();
   }, []);
 
