@@ -6,9 +6,12 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import * as Clipboard from 'expo-clipboard';
+import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 
 export default function DashboardScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
+  const [eventsList, setEventsList] = useState<EventItem[]>([]);
+  const [activeEventSwitchId, setActiveEventSwitchId] = useState('2');
   const [userId, setUserId] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
@@ -30,6 +33,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   // --- NEW: PITCH MODAL STATES ---
   const [suggestModalVisible, setSuggestModalVisible] = useState(false);
+  const [pitchEventScope, setPitchEventScope] = useState<string | null>(null);
   const [pitchBetType, setPitchBetType] = useState<'prop' | 'over_under' | 'p2p' | 'blind'>('prop');
   const [pitchQuestion, setPitchQuestion] = useState('');
   const [pitchOptions, setPitchOptions] = useState([{ id: '1', label: '', odds: '' }, { id: '2', label: '', odds: '' }]);
@@ -189,7 +193,7 @@ export default function DashboardScreen({ route, navigation }: any) {
     setShareModalVisible(false); 
   }
 
-  async function loadBoard() {
+  async function loadBoard(overrideEventId?: string | null) {
     try {
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
@@ -211,29 +215,43 @@ export default function DashboardScreen({ route, navigation }: any) {
         setUserRole(participantData.role); 
       }
 
-      const { data: eventData } = await supabase.from('events').select('*').eq('campaign_id', storedCampaignId).eq('status', 'live').single();
-      if (!eventData) return setLoading(false);
-      setActiveEvent(eventData);
+      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', storedCampaignId);
+      const eventsDataList = campaignEvents || [];
+      setEventsList(eventsDataList);
+
+      let targetEventId = overrideEventId !== undefined ? overrideEventId : activeEventSwitchId;
+      if (!eventsDataList.some((e: any) => e.id === targetEventId)) {
+        const fallbackEvent = eventsDataList.find((e: any) => e.status === 'live') || eventsDataList[0];
+        if (fallbackEvent) {
+          targetEventId = fallbackEvent.id;
+          setActiveEventSwitchId(targetEventId);
+        } else {
+          return setLoading(false);
+        }
+      }
+      setActiveEvent(eventsDataList.find((e: any) => e.id === targetEventId));
+
+      const eventFilter = `event_id.eq.${targetEventId},event_id.is.null`;
 
       // Fetch pending approvals
-      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).eq('event_id', eventData.id).eq('status', 'pending');
+      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).or(eventFilter).eq('status', 'pending');
       const { count: pendingP2P } = await supabase.from('p2p_prop_bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
       const { count: pendingBlind } = await supabase.from('blind_matchups').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
       
       setPendingApprovals((pendingProps || 0) + (pendingP2P || 0) + (pendingBlind || 0));
 
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('event_id', eventData.id).in('status', ['open', 'locked']);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).or(eventFilter).in('status', ['open', 'locked']);
       if (betsData) setBets(betsData);
 
-      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']);
+      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).or(eventFilter).in('status', ['open', 'locked', 'resolved']);
       if (p2pData) setP2pBets(p2pData);
 
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']);
+      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).or(eventFilter).in('status', ['open', 'matched', 'resolved']);
       if (blindData) setBlindMatchups(blindData);
 
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
       if (wagersData) {
-        const eventWagers = wagersData.filter((w: any) => w.bets?.event_id === eventData.id);
+        const eventWagers = wagersData.filter((w: any) => !w.bets?.event_id || w.bets?.event_id === targetEventId);
         setMyWagers(eventWagers.filter((w: any) => w.status === 'pending'));
         setMyBets(eventWagers.reverse());
       }
@@ -405,7 +423,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
         // If it passes the checks, it's safe to insert!
         const { data: betData, error: betError } = await supabase.from('bets').insert([{
-          event_id: activeEvent?.id,
+          event_id: pitchEventScope,
           question: pitchQuestion,
           type: pitchBetType,
           status: 'pending', 
@@ -440,6 +458,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
         const { error } = await supabase.from('p2p_prop_bets').insert([{
           campaign_id: campaignId,
+          event_id: pitchEventScope,
           proposer_id: userId,
           question: pitchQuestion,
           option_a_label: pitchOptionA,
@@ -475,6 +494,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
         const { error } = await supabase.from('blind_matchups').insert([{
           campaign_id: campaignId,
+          event_id: pitchEventScope,
           user_1_id: userId,
           question: pitchQuestion,
           side_a_label: pitchOptionA,
@@ -527,7 +547,8 @@ export default function DashboardScreen({ route, navigation }: any) {
   const renderBetCard = ({ item }: { item: any }) => {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
     const isOpen = item.status === 'open';
-    const isLocked = item.status === 'locked';
+    const isEventActionable = item.event_id === null || activeEvent?.status === 'live';
+    const isLocked = item.status === 'locked' || !isEventActionable;
 
     const getPlayerName = (uid: string) => {
       const player = standings.find(s => s.user_id === uid);
@@ -594,12 +615,12 @@ export default function DashboardScreen({ route, navigation }: any) {
             </View>
           ) : (
             <TouchableOpacity 
-              style={[styles.optionButton, isCreator && { backgroundColor: '#121212', borderColor: '#333' }]}
-              disabled={isCreator}
+              style={[styles.optionButton, (isCreator || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
+              disabled={isCreator || isLocked}
               onPress={() => { setSelectedMatchup(item); setBlindModalVisible(true); }}
             >
-              <Text style={[styles.optionLabel, isCreator && { color: '#666' }]}>
-                {isCreator ? "Waiting for Challenger..." : "Challenge with Blind Bid"}
+              <Text style={[styles.optionLabel, (isCreator || isLocked) && { color: '#666' }]}>
+                {isCreator ? "Waiting for Challenger..." : (isLocked ? "🔒 Match Locked" : "Challenge with Blind Bid")}
               </Text>
               <Text style={{ color: '#a0a0a0', fontSize: 10, marginTop: 4 }}>Base Unit: {item.base_amount} pts</Text>
             </TouchableOpacity>
@@ -739,8 +760,19 @@ export default function DashboardScreen({ route, navigation }: any) {
   });
 
   return (
-    <View style={styles.container}>
-      {/* --- HEADER --- */}
+    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
+      >
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.container, { paddingBottom: 0 }]}>
+            {/* --- HEADER --- */}
       <View style={styles.headerContainer}>
         <View style={styles.topNavRow}>
           <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
@@ -780,10 +812,12 @@ export default function DashboardScreen({ route, navigation }: any) {
           <View style={styles.mainHeaderRow}>
             <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={styles.title}>The Action</Text>
-              <Text style={styles.subtitle}>{activeEvent ? `Live: ${activeEvent.name}` : 'Waiting for host...'}</Text>
+              {eventsList.length > 0 && (
+                <EventSwitcher events={eventsList} activeEventId={activeEventSwitchId} onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }} />
+              )}
               <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
             </View>
-            <TouchableOpacity style={styles.pitchButton} onPress={() => setSuggestModalVisible(true)}><Text style={styles.pitchButtonText}>+ Pitch Bet</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.pitchButton} onPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }}><Text style={styles.pitchButtonText}>+ Pitch Bet</Text></TouchableOpacity>
           </View>
         ) : (
           <View style={styles.mainHeaderRow}>
@@ -798,20 +832,46 @@ export default function DashboardScreen({ route, navigation }: any) {
 
       {/* --- CONTENT AREA --- */}
       {activeTab === 'action' ? (
-        <FlatList
-          style={{ flex: 1 }}
-          data={[
-            ...blindMatchups.filter(b => b.status === 'open' || b.status === 'matched').map(b => ({ ...b, isBlind: true })),
-            ...p2pBets.filter(b => b.status === 'open' || b.status === 'locked').map(b => ({ ...b, isP2P: true })), 
-            ...bets
-          ]}
-          keyExtractor={(item) => item.id}
-          renderItem={renderBetCard}
-          contentContainerStyle={{ paddingBottom: 50 }}
-          showsVerticalScrollIndicator={false}
-        />
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          {(() => {
+            const campaignData = [
+              ...blindMatchups.filter(b => (b.status === 'open' || b.status === 'matched') && b.event_id === null).map(b => ({ ...b, isBlind: true })),
+              ...p2pBets.filter(b => (b.status === 'open' || b.status === 'locked') && b.event_id === null).map(b => ({ ...b, isP2P: true })), 
+              ...bets.filter(b => b.event_id === null)
+            ];
+            
+            if (campaignData.length > 0) {
+              return (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={[styles.sectionHeader, { color: '#FFD700' }]}>🏆 Campaign Stakes (Overall)</Text>
+                  {campaignData.map(item => <React.Fragment key={item.id}>{renderBetCard({item})}</React.Fragment>)}
+                </View>
+              );
+            }
+            return null;
+          })()}
+          
+          {(() => {
+            const eventData = [
+              ...blindMatchups.filter(b => (b.status === 'open' || b.status === 'matched') && b.event_id !== null).map(b => ({ ...b, isBlind: true })),
+              ...p2pBets.filter(b => (b.status === 'open' || b.status === 'locked') && b.event_id !== null).map(b => ({ ...b, isP2P: true })), 
+              ...bets.filter(b => b.event_id !== null)
+            ];
+            
+            if (eventData.length > 0) {
+              return (
+                <View style={{ paddingBottom: 50 }}>
+                  <Text style={styles.sectionHeader}>📅 Active Event Action</Text>
+                  {eventData.map(item => <React.Fragment key={item.id}>{renderBetCard({item})}</React.Fragment>)}
+                </View>
+              );
+            }
+            return <View style={{ paddingBottom: 50 }}><Text style={styles.emptyText}>No open bets for this event.</Text></View>;
+          })()}
+        </ScrollView>
       ) : (
         <FlatList
+          scrollEnabled={false}
           style={{ flex: 1 }}
           data={standings}
           keyExtractor={(item) => item.user_id}
@@ -999,6 +1059,27 @@ export default function DashboardScreen({ route, navigation }: any) {
               <TouchableOpacity onPress={() => setSuggestModalVisible(false)}>
                 <Text style={styles.closeSlipText}>Cancel</Text>
               </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, pitchEventScope === null && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                  onPress={() => setPitchEventScope(null)}
+                >
+                  <Text style={[styles.typeBtnText, pitchEventScope === null && styles.typeBtnTextActive]}>🌐 Overall Campaign</Text>
+                </TouchableOpacity>
+                {eventsList.map((e: any) => (
+                  <TouchableOpacity 
+                    key={e.id}
+                    style={[styles.typeBtn, pitchEventScope === e.id && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                    onPress={() => setPitchEventScope(e.id)}
+                  >
+                    <Text style={[styles.typeBtnText, pitchEventScope === e.id && styles.typeBtnTextActive]}>{e.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
             <View style={styles.typeSelectorRow}>
@@ -1315,6 +1396,9 @@ export default function DashboardScreen({ route, navigation }: any) {
           </View>
         </View>
       </Modal>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -1362,6 +1446,8 @@ const styles = StyleSheet.create({
     // 🚨 THE FIX: 25 for iOS, 15 for Android, 0 for Web
     paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'android' ? 0 : 0 
   },
+  sectionHeader: { fontSize: 14, fontWeight: 'bold', color: '#a0a0a0', marginBottom: 15, marginTop: 10, textTransform: 'uppercase' },
+  emptyText: { color: '#a0a0a0', textAlign: 'center', marginTop: 30, fontSize: 16 },
   bottomNavBtn: { flex: 1, alignItems: 'center', paddingVertical: 15 },
   bottomNavBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 15, backgroundColor: 'rgba(0, 208, 132, 0.05)', borderTopWidth: 3, borderTopColor: '#00D084', marginTop: -1 },
   bottomNavText: { color: '#a0a0a0', fontSize: 12, fontWeight: 'bold', marginTop: 4 },

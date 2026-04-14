@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 
 export default function CampaignScreen({ route, navigation }: any) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
@@ -221,7 +220,7 @@ export default function CampaignScreen({ route, navigation }: any) {
                 onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
                 style={{ padding: 5 }}
               >
-                <Ionicons name="settings-outline" size={28} color="#BB86FC" />
+                <Text style={{ fontSize: 24 }}>⚙️</Text>
               </TouchableOpacity>
             </View>
               

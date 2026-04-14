@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -13,19 +13,34 @@ import {
 import { supabase } from '../supabase'; // Update path if needed
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+type AuthMode = 'signIn' | 'signUp' | 'forgotPassword';
+
 export default function HostAuthScreen({ route, navigation }: any) {
-  const [isLogin, setIsLogin] = useState(route.params?.startInLogin || false);
+  const [authMode, setAuthMode] = useState<AuthMode>(route.params?.startInLogin ? 'signIn' : 'signUp');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [hostName, setHostName] = useState(''); // Only used for Sign Up
+  const [otp, setOtp] = useState('');
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (timeLeft > 0) {
+      timer = setTimeout(() => {
+        setTimeLeft((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [timeLeft]);
 
   const handleAuthentication = async () => {
     if (!email || !password) {
       Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
-    if (!isLogin && !hostName) {
+    if (authMode === 'signUp' && !hostName) {
       Alert.alert("Missing Fields", "Please enter a Host Name.");
       return;
     }
@@ -33,7 +48,7 @@ export default function HostAuthScreen({ route, navigation }: any) {
     setIsLoading(true);
 
     try {
-      if (isLogin) {
+      if (authMode === 'signIn') {
         // --- LOGIN FLOW ---
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -81,7 +96,7 @@ export default function HostAuthScreen({ route, navigation }: any) {
       }
 
       // 🚨 THE NEW ROUTING LOGIC 🚨
-      if (isLogin) {
+      if (authMode === 'signIn') {
         // Returning users (Hosts or upgraded Guests) go to their Campaign list
         navigation.navigate('Campaigns'); 
       } else {
@@ -102,29 +117,84 @@ export default function HostAuthScreen({ route, navigation }: any) {
     }
   };
 
+  const handleSendOtp = async () => {
+    if (!email) {
+      Alert.alert("Missing Fields", "Please enter your email.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+      if (error) throw error;
+      setIsOtpSent(true);
+      setTimeLeft(60);
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+      if (Platform.OS === 'web') window.alert(`Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtpAndReset = async () => {
+    if (!otp || !password) {
+      Alert.alert("Missing Fields", "Please enter the OTP and your new password.");
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otp.trim(),
+        type: 'recovery'
+      });
+      if (verifyError) throw verifyError;
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: password
+      });
+      if (updateError) throw updateError;
+
+      Alert.alert("Success", "Your password has been reset successfully. Please log in.");
+      if (Platform.OS === 'web') window.alert("Your password has been reset successfully. Please log in.");
+      
+      setAuthMode('signIn');
+      setIsOtpSent(false);
+      setPassword(''); // clear password field
+      setOtp('');
+    } catch (error: any) {
+      Alert.alert("Reset Failed", error.message);
+      if (Platform.OS === 'web') window.alert(`Reset Failed: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getTitle = () => {
+    if (authMode === 'signIn') return 'Welcome Back';
+    if (authMode === 'signUp') return 'Claim Your Board';
+    return 'Reset Password';
+  };
+
+  const getSubtitle = () => {
+    if (authMode === 'signIn') return 'Log in to manage your active games.';
+    if (authMode === 'signUp') return 'Create a permanent host account.';
+    if (isOtpSent) return 'Enter the 8-digit code sent to your email.';
+    return 'We will send an 8-digit code to your email.';
+  };
+
   return (
     <KeyboardAvoidingView 
-  // 🚨 1. The wrapper MUST have flex: 1 and your dark background color
-  style={{ flex: 1, backgroundColor: '#121212' }} 
-  
-  // 🚨 2. Use 'padding' for iOS and 'height' for Android
-  behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-  
-  // 🚨 3. The Offset: This tells it to push up a little extra to clear the home bar/notch. 
-  // (You might need to tweak these numbers, usually between 20 and 60)
-  keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20} 
->
-  <ScrollView 
-    // 🚨 4. The ScrollView itself needs to flex to fill the KeyboardAvoidingView
-    style={{ flex: 1 }} 
-    
-    // 🚨 5. flexGrow: 1 ensures the content stretches, and justifyContent: 'center' 
-    // helps dynamically push the content up when the keyboard appears
-    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25 }} 
-    
-    keyboardShouldPersistTaps="handled"
-    bounces={false} // Optional: stops the bouncy effect on iOS which can sometimes look glitchy with keyboards
-  >
+      style={{ flex: 1, backgroundColor: '#121212' }} 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20} 
+    >
+      <ScrollView 
+        style={{ flex: 1 }} 
+        contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 25 }} 
+        keyboardShouldPersistTaps="handled"
+        bounces={false} 
+      >
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -133,14 +203,12 @@ export default function HostAuthScreen({ route, navigation }: any) {
         </View>
 
         <View style={styles.formContainer}>
-          <Text style={styles.iconTitle}>👑</Text>
-          <Text style={styles.title}>{isLogin ? 'Welcome Back' : 'Claim Your Board'}</Text>
-          <Text style={styles.subtitle}>
-            {isLogin ? 'Log in to manage your active games.' : 'Create a permanent host account.'}
-          </Text>
+          <Text style={styles.iconTitle}>{authMode === 'forgotPassword' ? '🔒' : '👑'}</Text>
+          <Text style={styles.title}>{getTitle()}</Text>
+          <Text style={styles.subtitle}>{getSubtitle()}</Text>
 
           {/* Host Name Input (Only shows during Sign Up) */}
-          {!isLogin && (
+          {authMode === 'signUp' && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Host Display Name</Text>
               <TextInput
@@ -154,53 +222,112 @@ export default function HostAuthScreen({ route, navigation }: any) {
             </View>
           )}
 
-          {/* Email Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="you@email.com"
-              placeholderTextColor="#555"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
+          {/* Email Input (shows in all modes, unless OTP is sent in forgotPassword) */}
+          {(!isOtpSent || authMode !== 'forgotPassword') && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@email.com"
+                placeholderTextColor="#555"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+          )}
 
-          {/* Password Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="••••••••"
-              placeholderTextColor="#555"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
+          {/* OTP Code Input (only for forgotPassword when OTP is sent) */}
+          {(authMode === 'forgotPassword' && isOtpSent) && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>8-Digit Code</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="12345678"
+                placeholderTextColor="#555"
+                value={otp}
+                onChangeText={setOtp}
+                keyboardType="number-pad"
+                maxLength={8}
+              />
+            </View>
+          )}
 
-          {/* Submit Button */}
-          <TouchableOpacity 
-            style={[styles.authButton, isLoading ? styles.buttonDisabled : null]}
-            onPress={handleAuthentication}
-            disabled={isLoading}
-          >
-            <Text style={styles.authButtonText}>
-              {isLoading ? 'PROCESSING...' : (isLogin ? 'LOG IN' : 'CREATE ACCOUNT')}
-            </Text>
-          </TouchableOpacity>
+          {/* Password Input (shows for signIn, signUp, and when OTP is sent for resetting) */}
+          {(authMode !== 'forgotPassword' || isOtpSent) && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{authMode === 'forgotPassword' ? 'New Password' : 'Password'}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor="#555"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+          )}
 
-          {/* Toggle Login/Signup */}
-          <TouchableOpacity style={styles.toggleButton} onPress={() => setIsLogin(!isLogin)}>
-            <Text style={styles.toggleText}>
-              {isLogin ? "Don't have an account? " : "Already a host? "}
-              <Text style={styles.toggleTextBold}>{isLogin ? "Sign Up" : "Log In"}</Text>
-            </Text>
-          </TouchableOpacity>
+          {/* Primary Action Button */}
+          {authMode !== 'forgotPassword' ? (
+            <TouchableOpacity 
+              style={[styles.authButton, isLoading ? styles.buttonDisabled : null]}
+              onPress={handleAuthentication}
+              disabled={isLoading}
+            >
+              <Text style={styles.authButtonText}>
+                {isLoading ? 'PROCESSING...' : (authMode === 'signIn' ? 'LOG IN' : 'CREATE ACCOUNT')}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.authButton, isLoading ? styles.buttonDisabled : null]}
+              onPress={isOtpSent ? handleVerifyOtpAndReset : handleSendOtp}
+              disabled={isLoading}
+            >
+              <Text style={styles.authButtonText}>
+                {isLoading ? 'PROCESSING...' : (isOtpSent ? 'RESET PASSWORD' : 'SEND CODE')}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Forgot Password Link / Resend Code Timer */}
+          {authMode === 'signIn' && (
+            <TouchableOpacity style={styles.linkButton} onPress={() => setAuthMode('forgotPassword')}>
+              <Text style={styles.linkText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          )}
+
+          {authMode === 'forgotPassword' && isOtpSent && (
+            <TouchableOpacity 
+              style={[styles.linkButton, timeLeft > 0 ? { opacity: 0.5 } : null]} 
+              onPress={() => timeLeft === 0 && handleSendOtp()}
+              disabled={timeLeft > 0 || isLoading}
+            >
+              <Text style={styles.linkText}>
+                {timeLeft > 0 ? `Resend Code in ${timeLeft}s` : 'Resend Code'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Toggle Login/Signup / Back to Login */}
+          {authMode !== 'forgotPassword' ? (
+            <TouchableOpacity style={styles.toggleButton} onPress={() => setAuthMode(authMode === 'signIn' ? 'signUp' : 'signIn')}>
+              <Text style={styles.toggleText}>
+                {authMode === 'signIn' ? "Don't have an account? " : "Already a host? "}
+                <Text style={styles.toggleTextBold}>{authMode === 'signIn' ? "Sign Up" : "Log In"}</Text>
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.toggleButton} onPress={() => { setAuthMode('signIn'); setIsOtpSent(false); }}>
+              <Text style={styles.toggleText}>
+                Remembered your password? <Text style={styles.toggleTextBold}>Log In</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
+
         </View>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -222,6 +349,8 @@ const styles = StyleSheet.create({
   authButton: { backgroundColor: '#BB86FC', padding: 18, borderRadius: 10, alignItems: 'center', marginTop: 10, shadowColor: '#BB86FC', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 5 },
   buttonDisabled: { backgroundColor: '#2a2a2a', shadowOpacity: 0 },
   authButtonText: { color: '#000', fontSize: 16, fontWeight: 'bold', letterSpacing: 1 },
+  linkButton: { marginTop: 15, alignItems: 'center', padding: 5 },
+  linkText: { color: '#BB86FC', fontSize: 14, fontWeight: 'bold' },
   toggleButton: { marginTop: 25, alignItems: 'center', padding: 10 },
   toggleText: { color: '#a0a0a0', fontSize: 14 },
   toggleTextBold: { color: '#BB86FC', fontWeight: 'bold' },

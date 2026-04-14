@@ -5,9 +5,18 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
+import EventSwitcher, { EventItem } from '../components/EventSwitcher';
+import HostEventController, { HostEvent } from '../components/HostEventController';
+import EventFormModal from '../components/EventFormModal';
 
 export default function HostScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
+  const [eventsList, setEventsList] = useState<EventItem[]>([]);
+  const [activeEventSwitchId, setActiveEventSwitchId] = useState('2');
+  const [eventFormVisible, setEventFormVisible] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<HostEvent | null>(null);
+  const [hostEventScope, setHostEventScope] = useState<string | null>(null);
+
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [bets, setBets] = useState<any[]>([]);
   
@@ -105,7 +114,7 @@ export default function HostScreen({ navigation }: any) {
     };
   }, []);
 
-  async function fetchHostData() {
+  async function fetchHostData(overrideEventId?: string | null) {
     setLoading(true);
     try {
       const myUserId = await AsyncStorage.getItem('userId');
@@ -124,32 +133,47 @@ export default function HostScreen({ navigation }: any) {
         setWalletBalance(participantData.global_point_balance);
       }
       
-      const { data: eventData } = await supabase
-        .from('events').select('id').eq('campaign_id', campaignId).eq('status', 'live').single();
+      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', campaignId);
+      const eventsDataList = campaignEvents || [];
+      setEventsList(eventsDataList);
 
-      if (!eventData) return;
-      setActiveEventId(eventData.id);
+      let targetEventId = overrideEventId !== undefined ? overrideEventId : activeEventSwitchId;
+      if (!eventsDataList.some((e: any) => e.id === targetEventId)) {
+        const fallbackEvent = eventsDataList.find((e: any) => e.status === 'live') || eventsDataList[0];
+        if (fallbackEvent) {
+          targetEventId = fallbackEvent.id;
+          setActiveEventSwitchId(targetEventId);
+        } else {
+          setLoading(false);
+          return;
+        }
+      }
+      
+      setActiveEventId(targetEventId);
+
+      const eventFilter = `event_id.eq.${targetEventId},event_id.is.null`;
 
       // 1. Participants
       const { data: pData } = await supabase.from('campaign_participants').select('user_id, role, users(display_name)').eq('campaign_id', campaignId);
       setParticipants(pData ?? []);
 
       // 2. Fetch Regular House Bets (Active)
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`).eq('event_id', eventData.id).in('status', ['open', 'locked', 'graded']);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`).or(eventFilter).in('status', ['open', 'locked', 'graded']);
 
       // 3. Fetch Approved P2P Bets (Active)
-      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).in('status', ['open', 'locked']);
+      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).or(eventFilter).in('status', ['open', 'locked']);
 
       // 4. Fetch Blind Matchups (Active)
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).in('status', ['open', 'matched']);
+      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).or(eventFilter).in('status', ['open', 'matched']);
 
       const safeBets = betsData ?? [];
       const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true }));
       const safeBlind = (blindData ?? []).map(b => ({ ...b, isBlind: true }));
-      setBets([...safeBlind, ...safeP2P, ...safeBets]);
+      const allBets = [...safeBlind, ...safeP2P, ...safeBets];
+      setBets(allBets.sort((a,b) => (a.event_id === null ? -1 : (b.event_id === null ? 1 : 0))));
 
       // 5. Fetch Inbox 1: Ideas
-      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').eq('event_id', eventData.id).eq('status', 'pending');
+      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').or(eventFilter).eq('status', 'pending');
       setProposals(propsData ?? []);
 
       // 6. Fetch Inbox 2: Challenges
@@ -162,7 +186,7 @@ export default function HostScreen({ navigation }: any) {
         .from('bets')
         // 🚨 Add the users fetch to the select statement!
         .select('*, bet_options!bet_options_bet_id_fkey(*), users!creator_id(display_name)') 
-        .eq('event_id', eventData.id)
+        .or(eventFilter)
         .eq('status', 'pending');
 
       if (houseError) console.error("House Bet Fetch Error:", houseError);
@@ -294,7 +318,7 @@ export default function HostScreen({ navigation }: any) {
       try {
         const { error } = await supabase.from('blind_matchups').insert([{
           campaign_id: activeCampaignId,
-          event_id: activeEventId,
+          event_id: hostEventScope,
           question: newQuestion,
           side_a_label: p2pOptionA,
           side_b_label: p2pOptionB,
@@ -338,6 +362,7 @@ export default function HostScreen({ navigation }: any) {
       try {
         const { error } = await supabase.from('p2p_prop_bets').insert([{
           campaign_id: activeCampaignId,
+          event_id: hostEventScope,
           proposer_id: currentUserId,
           question: newQuestion,
           option_a_label: p2pOptionA,
@@ -384,7 +409,7 @@ export default function HostScreen({ navigation }: any) {
       const { data: betData, error: betError } = await supabase
         .from('bets')
         .insert([{ 
-          event_id: activeEventId, 
+          event_id: hostEventScope, 
           type: betType, 
           question: newQuestion, 
           status: 'open',
@@ -626,18 +651,55 @@ export default function HostScreen({ navigation }: any) {
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
 
   return (
-    <View style={styles.container}>
+    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
+      >
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[styles.container, { paddingBottom: 0 }]}>
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>Host Control</Text>
-          <Text style={styles.subtitle}>Manage the board.</Text>
+          {eventsList.length > 0 && (
+            <EventSwitcher 
+              events={eventsList} 
+              activeEventId={activeEventSwitchId} 
+              onSelectEvent={(id) => { setActiveEventSwitchId(id); fetchHostData(id); }} 
+            />
+          )}
         </View>
-        <TouchableOpacity style={styles.createButton} onPress={() => { setNewQuestion(''); setCreateModalVisible(true); }}>
-          <Text style={styles.createButtonText}>+ New Bet</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity style={[styles.createButton, { backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#00D084' }]} onPress={() => { setEditingEvent(null); setEventFormVisible(true); }}>
+            <Text style={[styles.createButtonText, { color: '#00D084', fontSize: 13, alignSelf: 'center' }]}>+ Event</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.createButton} onPress={() => { setNewQuestion(''); setHostEventScope(activeEventSwitchId); setCreateModalVisible(true); }}>
+            <Text style={styles.createButtonText}>+ New Bet</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {(() => {
+        const currentEvent = eventsList.find(e => e.id === activeEventId);
+        if (currentEvent) {
+          return (
+            <HostEventController 
+              event={currentEvent as any} 
+              onEventChanged={fetchHostData} 
+              onEditRequest={() => { setEditingEvent(currentEvent as any); setEventFormVisible(true); }}
+            />
+          );
+        }
+        return null;
+      })()}
+
       <FlatList
+        scrollEnabled={false}
         data={bets}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 50 }}
@@ -750,8 +812,14 @@ export default function HostScreen({ navigation }: any) {
           </View>
         }
         ListEmptyComponent={<Text style={styles.emptyText}>No open bets right now.</Text>}
-        renderItem={({ item }: { item: any }) => (
-          <View style={[styles.betCard, item.status === 'graded' && { opacity: 0.6, borderColor: '#666' }]}>
+        renderItem={({ item, index }: { item: any; index: number }) => {
+          const isFirstCampaignStake = item.event_id === null && bets.findIndex((b:any) => b.event_id === null) === index;
+          const isFirstEventStake = item.event_id !== null && bets.findIndex((b:any) => b.event_id !== null) === index;
+
+          return (
+            <View>
+              {isFirstCampaignStake && <Text style={[styles.sectionHeader, { color: '#FFD700', marginTop: 10, marginBottom: 15 }]}>🏆 Campaign Stakes (Overall)</Text>}
+              <View style={[styles.betCard, item.status === 'graded' && { opacity: 0.6, borderColor: '#666' }]}>
             
             {/* Header & Status */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
@@ -805,7 +873,9 @@ export default function HostScreen({ navigation }: any) {
 
             </View>
           </View>
-        )}
+          </View>
+          );
+        }}
         ListFooterComponent={
           <View style={{ paddingTop: 20 }}>
             {/* --- MANAGE CREW SECTION --- */}
@@ -859,6 +929,27 @@ export default function HostScreen({ navigation }: any) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Push Live Bet</Text>
               <TouchableOpacity onPress={() => setCreateModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, hostEventScope === null && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                  onPress={() => setHostEventScope(null)}
+                >
+                  <Text style={[styles.typeBtnText, hostEventScope === null && styles.typeBtnTextActive]}>🌐 Overall Campaign</Text>
+                </TouchableOpacity>
+                {eventsList.map((e: any) => (
+                  <TouchableOpacity 
+                    key={e.id}
+                    style={[styles.typeBtn, hostEventScope === e.id && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                    onPress={() => setHostEventScope(e.id)}
+                  >
+                    <Text style={[styles.typeBtnText, hostEventScope === e.id && styles.typeBtnTextActive]}>{e.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
 
             <View style={styles.typeSelectorRow}>
@@ -1141,6 +1232,16 @@ export default function HostScreen({ navigation }: any) {
           </View>
         </View>
       </Modal>
+      <EventFormModal 
+        visible={eventFormVisible} 
+        existingEvent={editingEvent} 
+        campaignId={activeCampaignId} 
+        onClose={() => setEventFormVisible(false)} 
+        onSaveComplete={() => setEventFormVisible(false)} 
+      />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }

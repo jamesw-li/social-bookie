@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, Platform, ScrollView, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 import { supabase } from '../supabase'; // Ensure this path is correct for your project
-import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen({ route, navigation }: any) {
@@ -235,7 +234,7 @@ return (
       {/* 2. HEADER: Pinned securely to the top */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5, marginRight: 15 }}>
-          <Ionicons name="arrow-back" size={28} color="#BB86FC" />
+          <Text style={{ fontSize: 24, paddingBottom: 2 }}>🔙</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Settings</Text>
       </View>
