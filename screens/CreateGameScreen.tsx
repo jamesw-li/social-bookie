@@ -119,7 +119,7 @@ export default function CreateGameScreen({ navigation }: any) {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.innerContainer} keyboardShouldPersistTaps="handled">
         
 

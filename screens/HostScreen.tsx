@@ -682,9 +682,9 @@ export default function HostScreen({ navigation }: any) {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
       >
         <ScrollView 

@@ -287,11 +287,13 @@ export default function DashboardScreen({ route, navigation }: any) {
         const confirmRefund = window.confirm('You already have action on this bet. Want to cancel your ticket, refund your points, and pick again?');
         if (confirmRefund) {
           (async () => {
-            try {
-              await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
-              window.alert('Refunded! Your points have been returned.');
-              loadBoard();
-            } catch (error: any) { window.alert(`Error: ${error.message}`); }
+            const { error } = await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
+            if (error) {
+              window.alert(`Error: ${error.message}`);
+              return;
+            }
+            window.alert('Refunded! Your points have been returned.');
+            loadBoard();
           })();
         }
         return;
@@ -300,8 +302,9 @@ export default function DashboardScreen({ route, navigation }: any) {
       Alert.alert('Bet Already Placed', 'Want to cancel your ticket, refund your points, and pick again?', [
           { text: 'Keep Ticket', style: 'cancel' },
           { text: 'Refund & Edit', style: 'destructive', onPress: async () => {
-              try { await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id }); loadBoard(); } 
-              catch (error: any) { Alert.alert('Error', error.message); }
+              const { error } = await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
+              if (error) { Alert.alert('Error', error.message); return; }
+              loadBoard();
             }
           }
         ]);
@@ -771,10 +774,10 @@ export default function DashboardScreen({ route, navigation }: any) {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#121212' }}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <View style={{ flex: 1, backgroundColor: '#121212', overflow: 'hidden' }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
       >
         {/* ── PERSISTENT WALLET HEADER ── */}

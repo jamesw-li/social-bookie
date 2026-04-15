@@ -200,7 +200,7 @@ export default function HostAuthScreen({ route, navigation }: any) {
   return (
     <KeyboardAvoidingView 
       style={{ flex: 1, backgroundColor: '#121212' }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20} 
     >
       <ScrollView 
