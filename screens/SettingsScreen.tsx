@@ -1,252 +1,141 @@
 import React, { useEffect, useState, useLayoutEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, Platform, ScrollView, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import {
+  StyleSheet, Text, View, TouchableOpacity,
+  Alert, Platform, ScrollView, useWindowDimensions
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase } from '../supabase'; // Ensure this path is correct for your project
+import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
+
+interface Tile {
+  id: string;
+  icon: string;
+  label: string;
+  subtitle: string;
+  accentColor: string;
+  onPress: () => void;
+}
+
 export default function SettingsScreen({ route, navigation }: any) {
+  const { width } = useWindowDimensions();
+  // Cap the layout width at 480px (phone width) for web; fill the screen on native
+  const contentWidth = Math.min(width, 480);
+  const TILE_SIZE = (contentWidth - 20 * 2 - 12) / 2;
+
   const insets = useSafeAreaInsets();
-  // Grab the data passed from the Campaigns screen
   const { userId, currentName } = route.params || {};
-  
-  const [newName, setNewName] = useState(currentName || '');
-  const [isUpdatingName, setIsUpdatingName] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState(currentName || '');
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [isUpgrading, setIsUpgrading] = useState(false);
-
-  // States for Permanent Users changing their credentials
-  const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [isUpdatingAccount, setIsUpdatingAccount] = useState(false);
-
-  // The required security key
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [currentEmail, setCurrentEmail] = useState('');
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useLayoutEffect(() => {
-    navigation.setOptions({
-      headerShown: false, // Hide the native header; we render our own back button in content
-    });
+    navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   useEffect(() => {
-    async function checkUserStatus() {
+    async function loadUserInfo() {
+      const storedName = await AsyncStorage.getItem('userName');
+      if (storedName) setDisplayName(storedName);
+
       try {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        
-        // 🚨 Catch any silent Supabase errors
-        if (error) throw error;
-
-        if (user?.is_anonymous) {
-          setIsAnonymous(true);
-        } else if (user?.email) {
-          // They are a permanent user! Grab their email for the Profile Card.
-          setIsAnonymous(false);
-          setCurrentEmail(user.email);
-        } else {
-          // 🚨 THE FIX: The fallback! If they aren't anonymous but have no email payload
-          setIsAnonymous(false);
-          setCurrentEmail('Email unavailable'); 
-        }
-
-      } catch (error: any) {
-        console.error("Auth Check Error:", error.message);
-        
-        // 🚨 THE FIX: If the session is dead, clean up and boot them out!
-        if (error.message.includes('Auth session missing')) {
-          setCurrentEmail('Session expired');
-          
-          // Optional but recommended: Clear the stale phone memory
-          await AsyncStorage.removeItem('userId');
-          await AsyncStorage.removeItem('userName');
-          
-          // Send them back to the login screen
-          // navigation.reset({ index: 0, routes: [{ name: 'Login' }] }); 
-        } else {
-          setCurrentEmail('Error loading email'); 
-        }
-      } finally {
-        // 🚨 Guarantees the loading state ends, no matter what happens above
-        setIsCheckingAuth(false);
-      }
+        const { data: { user } } = await supabase.auth.getUser();
+        setIsAnonymous(user?.is_anonymous ?? true);
+      } catch (_) {}
     }
-    
-    checkUserStatus();
-  }, []);
-
-  const handleSecureUpdate = async () => {
-    if (!currentPassword) {
-      if (Platform.OS === 'web') window.alert("Security Check: You must enter your Current Password to save changes.");
-      else Alert.alert("Security Check", "You must enter your Current Password to save changes.");
-      return;
-    }
-
-    setIsUpdatingAccount(true);
-
-    try {
-      // 1. Get the user's current session email so we can test their password
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      if (userError || !user?.email) throw new Error("Could not verify user session.");
-
-      // 2. THE BOUNCER: Try to sign in with the provided Current Password
-      const { error: verifyError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: currentPassword
-      });
-
-      if (verifyError) {
-        throw new Error("Incorrect current password. Changes blocked.");
-      }
-
-      // 3. PASSED! Now process the Auth updates (Email & Password)
-      const authUpdates: { email?: string; password?: string } = {};
-      if (newEmail.trim()) authUpdates.email = newEmail.trim();
-      if (newPassword.trim()) authUpdates.password = newPassword.trim();
-
-      if (Object.keys(authUpdates).length > 0) {
-        const { error: authUpdateError } = await supabase.auth.updateUser(authUpdates);
-        if (authUpdateError) throw authUpdateError;
-      }
-
-      // 4. Process the Database update (Display Name)
-      let finalName = currentName; // Default to existing name
-      
-      if (newName.trim() && newName.trim() !== currentName) {
-        const { error: dbError } = await supabase
-          .from('users')
-          .update({ display_name: newName.trim() })
-          .eq('id', user.id);
-          
-        if (dbError) throw dbError;
-
-        finalName = newName.trim();
-        // Keep phone memory in sync
-        await AsyncStorage.setItem('userName', finalName);
-        setNewName(finalName);
-      }
-
-      // 5. Success Alerts & Cleanup
-      if (Platform.OS === 'web') {
-        window.alert("Success! 🛡️ Your account details have been securely updated.");
-      } else {
-        Alert.alert("Success! 🛡️", "Your account details have been securely updated.");
-      }
-      
-      // Clear the sensitive fields
-      setCurrentPassword('');
-      setNewPassword('');
-      setNewEmail('');
-
-      // 6. Navigate back to Campaigns to refresh the Welcome text!
-      navigation.navigate({
-        name: 'Campaign', // Ensure this matches your App.tsx exact route name!
-        params: { updatedUserName: finalName },
-        merge: true,
-      });
-
-    } catch (error: any) {
-      if (Platform.OS === 'web') {
-        window.alert(`Update Failed: ${error.message}`);
-      } else {
-        Alert.alert("Update Failed", error.message);
-      }
-    } finally {
-      setIsUpdatingAccount(false);
-    }
-  };
-
-  const handleUpgradeAccount = async () => {
-    if (!email || password.length < 6) {
-      Alert.alert("Hold up", "Please enter a valid email and a password of at least 6 characters.");
-      return;
-    }
-
-    setIsUpgrading(true);
-
-    try {
-      // This is the magic Supabase command. It upgrades the current session!
-      const { data, error } = await supabase.auth.updateUser({
-        email: email.trim(),
-        password: password
-      });
-
-      if (error) throw error;
-
-      Alert.alert("Success! 🎉", "Your account is now permanently saved. You can log in on any device.");
-      
-      // Hide the upgrade form now that they are a permanent user
-      setIsAnonymous(false); 
-
-    } catch (error: any) {
-      Alert.alert("Upgrade Failed", error.message);
-    } finally {
-      setIsUpgrading(false);
-    }
-  };
-  
+    loadUserInfo();
+  }, [route.params?.updatedUserName]);
 
   const executeLogout = async () => {
-    // 1. Sign out of Supabase
     await supabase.auth.signOut();
-    
-    // 2. Nuke the phone's memory so a new user can start fresh
-    await AsyncStorage.clear(); 
-    
-    // 3. Reset the navigation stack so they can't swipe back into the game
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Welcome' }],
-    });
+    await AsyncStorage.clear();
+    navigation.reset({ index: 0, routes: [{ name: 'Welcome' }] });
   };
 
   const handleLogout = () => {
     if (isAnonymous) {
-      // --- WEB BEHAVIOR ---
-      if (Platform.OS === 'web') {
-        const userConfirmed = window.confirm(
-          "Warning: Guest Account\n\nIf you log out without linking an email, your points, bets, and profile will be lost forever. Are you absolutely sure?"
-        );
-        if (userConfirmed) {
-          executeLogout();
-        }
-      } 
-      // --- MOBILE BEHAVIOR ---
-      else {
-        Alert.alert(
-          "Warning: Guest Account",
-          "If you log out without linking an email, your points, bets, and profile will be lost forever. Are you absolutely sure?",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Log Out Anyway", style: "destructive", onPress: executeLogout }
-          ]
-        );
-      }
+      Alert.alert(
+        'Warning: Guest Account',
+        'If you log out without linking an email, your points, bets, and profile will be lost forever. Are you absolutely sure?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log Out Anyway', style: 'destructive', onPress: executeLogout },
+        ]
+      );
     } else {
-      // Permanent users skip the warning and just log out
-      executeLogout(); 
+      executeLogout();
     }
   };
 
-return (
-    // 1. We are back to the native KeyboardAvoidingView!
-    // Added keyboardVerticalOffset to give the native push an extra 20-pixel boost.
-    <KeyboardAvoidingView 
-      style={[styles.container, { flex: 1, backgroundColor: '#121212' }]} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} 
-    >
-      {/* 2. CONTENT SCROLL VIEW */}
-      <ScrollView 
-        // 🚨 THE FIX: Increased paddingBottom to 150 to create a "runway" for the bottom inputs
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 170 }} 
-        keyboardShouldPersistTaps="handled"
+  const comingSoon = (label: string) =>
+    Alert.alert(`${label}`, 'This feature is coming soon! Stay tuned. 🚀');
+
+  const tiles: Tile[] = [
+    {
+      id: 'profile',
+      icon: '👤',
+      label: 'Profile',
+      subtitle: isAnonymous ? 'Guest Account' : displayName || 'Account & security',
+      accentColor: '#BB86FC',
+      onPress: () => navigation.navigate('Profile', { userId, currentName: displayName }),
+    },
+    {
+      id: 'archive',
+      icon: '🏆',
+      label: 'Hall of Fame',
+      subtitle: 'Completed campaigns',
+      accentColor: '#FFD700',
+      onPress: () => navigation.navigate('ArchivedCampaigns'),
+    },
+    {
+      id: 'stats',
+      icon: '📊',
+      label: 'Statistics',
+      subtitle: 'Coming soon',
+      accentColor: '#333',
+      onPress: () => comingSoon('Statistics'),
+    },
+    {
+      id: 'notifications',
+      icon: '🔔',
+      label: 'Notifications',
+      subtitle: 'Coming soon',
+      accentColor: '#333',
+      onPress: () => comingSoon('Notifications'),
+    },
+    {
+      id: 'friends',
+      icon: '👥',
+      label: 'Friends',
+      subtitle: 'Coming soon',
+      accentColor: '#333',
+      onPress: () => comingSoon('Friends'),
+    },
+    {
+      id: 'appearance',
+      icon: '🎨',
+      label: 'Appearance',
+      subtitle: 'Coming soon',
+      accentColor: '#333',
+      onPress: () => comingSoon('Appearance'),
+    },
+  ];
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 20,
+          paddingBottom: 40,
+          maxWidth: 480,
+          width: '100%',
+          alignSelf: 'center',
+        }}
         showsVerticalScrollIndicator={false}
       >
-        {/* In-content back button + title */}
-        <View style={{ paddingTop: insets.top + 12 }}>
+        {/* Header */}
+        <View style={{ paddingTop: insets.top + 12, marginBottom: 28 }}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 16 }}
@@ -256,156 +145,125 @@ return (
           <Text style={styles.pageTitle}>Settings</Text>
         </View>
 
-        {isCheckingAuth ? (
-          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 }}>
-            <ActivityIndicator size="large" color="#BB86FC" />
-          </View>
-        ) : (
-          <>
-            {/* --- PREMIUM PROFILE CARD --- */}
-            {!isAnonymous && (
-              <View style={{ alignItems: 'center', marginTop: 20, marginBottom: 30 }}>
-                <View style={{ 
-                  width: 80, height: 80, borderRadius: 40, backgroundColor: '#BB86FC', 
-                  justifyContent: 'center', alignItems: 'center', marginBottom: 15,
-                  shadowColor: '#BB86FC', shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
-                }}>
-                  <Text style={{ fontSize: 36, fontWeight: 'bold', color: '#121212' }}>
-                    {currentName ? currentName.charAt(0).toUpperCase() : '?'}
-                  </Text>
-                </View>
-                
-                <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 5 }}>
-                  {currentName || 'Host'}
-                </Text>
-                <Text style={{ fontSize: 16, color: '#a0a0a0', letterSpacing: 0.5 }}>
-                  {currentEmail || 'Loading email...'}
-                </Text>
-              </View>
-            )}
-
-            {/* --- THE UPGRADE ZONE --- */}
-            {isAnonymous && (
-              <View style={{ marginTop: 40, backgroundColor: '#1e1e1e', padding: 20, borderRadius: 12, borderWidth: 1, borderColor: '#333' }}>
-                {/* ... Upgrade Zone Inputs ... */}
-              </View>
-            )}
-
-            {/* --- ACCOUNT MANAGEMENT --- */}
-            {!isAnonymous && (
-              <View style={{ marginTop: 40, borderTopWidth: 1, borderColor: '#333', paddingTop: 30 }}>
-                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 20 }}>Account Settings</Text>
-                
-                {/* DISPLAY NAME */}
-                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>Display Name</Text>
-                <TextInput
-                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
-                  value={newName}
-                  onChangeText={setNewName}
-                  maxLength={20}
-                />
-
-                {/* NEW EMAIL */}
-                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Email</Text>
-                <TextInput
-                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 15 }}
-                  placeholder="Leave blank to keep current"
-                  placeholderTextColor="#555"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={newEmail}
-                  onChangeText={setNewEmail}
-                />
-
-                {/* NEW PASSWORD */}
-                <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' }}>New Password</Text>
-                <TextInput
-                  style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12, marginBottom: 25 }}
-                  placeholder="Leave blank to keep current"
-                  placeholderTextColor="#555"
-                  secureTextEntry
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                />
-
-                {/* THE SECURITY KEY */}
-                <View style={{ backgroundColor: '#1e1e1e', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#ff4444', marginBottom: 20 }}>
-                  <Text style={{ color: '#ff4444', fontSize: 12, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase' }}>
-                    Required: Current Password
-                  </Text>
-                  <TextInput
-                    style={{ backgroundColor: '#121212', borderWidth: 1, borderColor: '#444', borderRadius: 8, color: '#fff', padding: 12 }}
-                    placeholder="Enter current password to save..."
-                    placeholderTextColor="#555"
-                    secureTextEntry
-                    value={currentPassword}
-                    onChangeText={setCurrentPassword}
-                  />
-                </View>
-
-                {/* SAVE BUTTON */}
-                <TouchableOpacity 
-                  style={{ backgroundColor: currentPassword ? '#BB86FC' : '#333', padding: 15, borderRadius: 8, alignItems: 'center' }}
-                  onPress={handleSecureUpdate}
-                  disabled={isUpdatingAccount || !currentPassword}
-                >
-                  <Text style={{ color: currentPassword ? '#000' : '#777', fontWeight: 'bold', fontSize: 16 }}>
-                    {isUpdatingAccount ? 'VERIFYING & SAVING...' : 'SAVE CHANGES'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* --- LOG OUT BUTTON --- */}
-            <TouchableOpacity 
-              style={{ marginTop: 50, marginBottom: 30, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ff4444', padding: 15, borderRadius: 8, alignItems: 'center' }}
-              onPress={handleLogout}
+        {/* Tile Grid */}
+        <View style={styles.grid}>
+          {tiles.map((tile) => (
+            <TouchableOpacity
+              key={tile.id}
+              style={[
+              styles.tile,
+              { width: TILE_SIZE, height: TILE_SIZE },
+              { borderColor: tile.accentColor === '#333' ? '#2a2a2a' : tile.accentColor + '40' }
+            ]}
+              onPress={tile.onPress}
+              activeOpacity={0.75}
             >
-              <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }}>
-                LOG OUT
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
+              {/* Accent dot in top-right corner */}
+              <View style={[styles.accentDot, { backgroundColor: tile.accentColor }]} />
 
+              <Text style={styles.tileIcon}>{tile.icon}</Text>
+              <Text style={styles.tileLabel}>{tile.label}</Text>
+              <Text
+                style={[
+                  styles.tileSubtitle,
+                  tile.accentColor === '#333' && { color: '#444' },
+                ]}
+                numberOfLines={1}
+              >
+                {tile.subtitle}
+              </Text>
+
+              {tile.accentColor === '#333' && (
+                <View style={styles.comingSoonBadge}>
+                  <Text style={styles.comingSoonText}>SOON</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Log Out */}
+        <View style={{ marginTop: 'auto', paddingTop: 32 }}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20 },
   pageTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 25,
-    marginTop: 10,
   },
-  card: {
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  tile: {
     backgroundColor: '#1e1e1e',
-    padding: 20,
-    borderRadius: 15,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#333',
+    padding: 16,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    position: 'relative',
   },
-  label: { color: '#BB86FC', fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-  input: {
-    backgroundColor: '#121212',
-    borderWidth: 1,
-    borderColor: '#444',
-    borderRadius: 8,
+  accentDot: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    opacity: 0.8,
+  },
+  tileIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  tileLabel: {
     color: '#fff',
-    fontSize: 18,
-    padding: 15,
-    marginBottom: 20,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 3,
   },
-  saveButton: {
-    backgroundColor: '#BB86FC',
-    padding: 15,
-    borderRadius: 8,
+  tileSubtitle: {
+    color: '#a0a0a0',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  comingSoonBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  comingSoonText: {
+    color: '#555',
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  logoutButton: {
+    borderWidth: 1,
+    borderColor: '#3a1a1a',
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    padding: 16,
     alignItems: 'center',
   },
-  saveButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+  logoutText: {
+    color: '#991b1b',
+    fontWeight: '700',
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
 });

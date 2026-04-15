@@ -7,7 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function CampaignScreen({ route, navigation }: any) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [activeCampaigns, setActiveCampaigns] = useState<any[]>([]);
-  const [closedCampaigns, setClosedCampaigns] = useState<any[]>([]);
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
   const [isAnonymous, setIsAnonymous] = useState(true); // Default to true for safety
@@ -88,17 +87,13 @@ export default function CampaignScreen({ route, navigation }: any) {
       if (error) throw error;
 
       if (data) {
-        // 2. Flatten the data so it's easy to read
+        // 2. Flatten the data and keep only active campaigns
         const mapped = data.map((item: any) => ({
           id: item.campaigns.id,
           name: item.campaigns.name,
-          // If status is null for some reason, default it to 'active'
-          status: item.campaigns.status || 'active' 
+          status: item.campaigns.status || 'active'
         }));
-
-        // 3. Split them into the two buckets
         setActiveCampaigns(mapped.filter((c: any) => c.status === 'active'));
-        setClosedCampaigns(mapped.filter((c: any) => c.status === 'closed'));
       }
     } catch (error: any) {
       console.error("Error fetching campaigns:", error.message);
@@ -277,20 +272,7 @@ export default function CampaignScreen({ route, navigation }: any) {
             )}
           </View>
 
-          {/* --- ZONE 2: HALL OF FAME (Mapped instead of FlatList) --- */}
-          <Text style={[styles.sectionTitle, { marginTop: 10 }]}>Hall of Fame</Text>
-          <View style={{ flex: 1 }}>
-            {closedCampaigns.length === 0 ? (
-              <Text style={styles.emptyText}>No archived events yet.</Text>
-            ) : (
-              closedCampaigns.map((item) => (
-                <TouchableOpacity key={item.id} style={[styles.campaignCard, { borderColor: '#444' }]} onPress={() => selectCampaign(item)}>
-                  <Text style={[styles.campaignName, { color: '#a0a0a0' }]}>{item.name}</Text>
-                  <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>🛑 CLOSED</Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
+
 
         </View>
       </ScrollView>

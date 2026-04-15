@@ -15,6 +15,8 @@ import ReadOnlyDashboardScreen from './screens/ReadOnlyDashboardScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import CreateGameScreen from './screens/CreateGameScreen';
 import HostAuthScreen from './screens/HostAuthScreen';
+import ProfileScreen from './screens/ProfileScreen';
+import ArchivedCampaignsScreen from './screens/ArchivedCampaignsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -117,7 +119,9 @@ export default function App() {
             component={ReadOnlyDashboardScreen} 
             options={{ headerShown: false }} 
         />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="ArchivedCampaigns" component={ArchivedCampaignsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CreateGame" component={CreateGameScreen} options={{ headerTitle: '' }} />
         <Stack.Screen name="HostAuth" component={HostAuthScreen} options={{ headerTitle: '' }} />
         </Stack.Navigator>
