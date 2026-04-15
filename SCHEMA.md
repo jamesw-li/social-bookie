@@ -134,7 +134,7 @@ The campaign bank accounts. Every point adjustment hits this table to form an au
 - `id` (uuid, PK, Not Null)
 - `campaign_id` (uuid, Not Null)
 - `user_id` (uuid, Not Null)
-- `transaction_type` (USER-DEFINED Enum, Not Null)
+- `transaction_type` (`ledger_transaction_type` Enum, Not Null) — values: `wager`, `payout`, `refund`, `adjustment`
 - `amount` (integer, Not Null)
 - `memo` (text, Not Null)
 - `running_balance` (integer, Not Null)

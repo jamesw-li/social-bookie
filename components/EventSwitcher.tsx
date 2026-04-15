@@ -42,6 +42,9 @@ export default function EventSwitcher({ events, activeEventId, onSelectEvent }: 
     return event.name;
   };
 
+  // Trigger pill shows name only; dropdown rows show full text
+  const getTriggerText = (event?: EventItem) => event?.name ?? 'Select Event';
+
   return (
     <View style={styles.container}>
       {/* The Active Dropdown Pill */}
@@ -50,7 +53,7 @@ export default function EventSwitcher({ events, activeEventId, onSelectEvent }: 
         onPress={() => setModalVisible(true)}
       >
         <Text style={styles.dropdownIcon}>{getIcon(activeEvent?.status)}</Text>
-        <Text style={styles.dropdownText}>{getDisplayText(activeEvent)}</Text>
+        <Text style={styles.dropdownText}>{getTriggerText(activeEvent)}</Text>
         <Text style={styles.chevron}>▼</Text>
       </TouchableOpacity>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { supabase } from '../supabase'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { 
@@ -18,6 +18,20 @@ export default function CreateGameScreen({ navigation }: any) {
   const [eventName, setEventName] = useState('');
   const [startingBankroll, setStartingBankroll] = useState('10000');
   const [isLoading, setIsLoading] = useState(false);
+  
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: '', // Keep header clear for body title
+      headerLeft: () => (
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()} 
+          style={{ paddingVertical: 8, paddingLeft: 15, paddingRight: 10 }}
+        >
+          <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -108,13 +122,6 @@ export default function CreateGameScreen({ navigation }: any) {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.innerContainer} keyboardShouldPersistTaps="handled">
         
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Host a Game</Text>
-          <View style={{ width: 60 }} /> 
-        </View>
 
         <View style={styles.formContainer}>
           <Text style={styles.iconTitle}>👑</Text>
@@ -180,11 +187,7 @@ export default function CreateGameScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  innerContainer: { flexGrow: 1, padding: 25 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40, marginBottom: 30 },
-  backButton: { padding: 10, marginLeft: -10 },
-  backText: { color: '#BB86FC', fontSize: 16, fontWeight: 'bold' },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  innerContainer: { flexGrow: 1, padding: 25, paddingTop: 10 },
   formContainer: { flex: 1, justifyContent: 'center', paddingBottom: 50 },
   iconTitle: { fontSize: 50, textAlign: 'center', marginBottom: 10 },
   title: { fontSize: 32, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 10 },

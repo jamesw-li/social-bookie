@@ -80,10 +80,10 @@ export default function FinalResultsScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
-  gameOverText: { color: '#ff4444', fontSize: 18, fontWeight: 'bold', textAlign: 'center', letterSpacing: 2 },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#FFD700', textAlign: 'center', marginTop: 10 },
-  subtitle: { color: '#a0a0a0', textAlign: 'center', fontSize: 18, marginBottom: 20 },
+  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 10 },
+  gameOverText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold', textAlign: 'center', letterSpacing: 2, textTransform: 'uppercase' },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#FFD700', textAlign: 'center', marginTop: 15, marginBottom: 5 },
+  subtitle: { color: '#a0a0a0', textAlign: 'center', fontSize: 18, marginBottom: 25 },
   playerCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e1e1e', padding: 18, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#333' },
   playerInfo: { flexDirection: 'row', alignItems: 'center' },
   rankText: { fontSize: 20, fontWeight: 'bold', color: '#666', width: 45 },

@@ -8,6 +8,7 @@ import { supabase } from '../supabase';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 import HostEventController, { HostEvent } from '../components/HostEventController';
 import EventFormModal from '../components/EventFormModal';
+import LedgerTab from '../components/LedgerTab';
 
 export default function HostScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,10 @@ export default function HostScreen({ navigation }: any) {
   const [pendingPitches, setPendingPitches] = useState<any[]>([]); 
   
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [activeCampaignName, setActiveCampaignName] = useState<string>('');
   const [participants, setParticipants] = useState<any[]>([]);
+  const [deleteCampaignModalVisible, setDeleteCampaignModalVisible] = useState(false);
+  const [confirmCampaignName, setConfirmCampaignName] = useState('');
   
   // Grading & Creation States
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
@@ -35,6 +39,9 @@ export default function HostScreen({ navigation }: any) {
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<any>(null);
+  const [playerActionSheetVisible, setPlayerActionSheetVisible] = useState(false);
+  const [viewingPlayerLedger, setViewingPlayerLedger] = useState(false);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
   
   // Bet Type State
@@ -120,7 +127,9 @@ export default function HostScreen({ navigation }: any) {
       const myUserId = await AsyncStorage.getItem('userId');
       setCurrentUserId(myUserId);
       const campaignId = await AsyncStorage.getItem('campaignId');
+      const storedCampaignName = await AsyncStorage.getItem('campaignName');
       setActiveCampaignId(campaignId); 
+      setActiveCampaignName(storedCampaignName || '');
       
       const { data: participantData } = await supabase
         .from('campaign_participants')
@@ -551,7 +560,8 @@ export default function HostScreen({ navigation }: any) {
       } else {
         const { error } = await supabase.rpc('resolve_bet', { 
           target_bet_id: selectedBet.id, 
-          winning_opt_id: winningOptionId 
+          p_winning_option_id: winningOptionId,
+          p_campaign_id: activeCampaignId,
         });
         if (error) throw error;
       }
@@ -648,7 +658,27 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
+  async function handleDeleteCampaign() {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`DELETE CAMPAIGN FOREVER\n\n"${activeCampaignName}" and ALL its data will be permanently erased. There is NO undo.\n\nAre you absolutely sure?`)) {
+        try {
+          const { error } = await supabase.rpc('delete_campaign', { p_campaign_id: activeCampaignId });
+          if (error) throw error;
+          await AsyncStorage.removeItem('campaignId');
+          await AsyncStorage.removeItem('campaignName');
+          navigation.reset({ index: 0, routes: [{ name: 'Campaigns' }] });
+        } catch (err: any) {
+          window.alert(err.message);
+        }
+      }
+    } else {
+      setConfirmCampaignName('');
+      setDeleteCampaignModalVisible(true);
+    }
+  }
+
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
+
 
   return (
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
@@ -665,7 +695,6 @@ export default function HostScreen({ navigation }: any) {
           <View style={[styles.container, { paddingBottom: 0 }]}>
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>Host Control</Text>
           {eventsList.length > 0 && (
             <EventSwitcher 
               events={eventsList} 
@@ -882,32 +911,19 @@ export default function HostScreen({ navigation }: any) {
             <Text style={styles.sectionHeader}>Manage Crew</Text>
             <View style={styles.crewContainer}>
               {participants.map(p => (
-                <View key={p.user_id} style={styles.crewCard}>
+                <TouchableOpacity
+                  key={p.user_id}
+                  style={styles.crewCard}
+                  onPress={() => { setSelectedParticipant(p); setViewingPlayerLedger(false); setPlayerActionSheetVisible(true); }}
+                >
                   <View>
                     <Text style={styles.crewName}>{p.users.display_name}</Text>
                     <Text style={p.role === 'host' ? styles.crewRoleHost : styles.crewRoleGuest}>
                       {p.role.toUpperCase()}
                     </Text>
                   </View>
-                  
-                  {p.role === 'guest' && (
-                    <TouchableOpacity 
-                      style={styles.elevateBtn} 
-                      onPress={() => handleElevateHost(p.user_id, p.users.display_name)}
-                    >
-                      <Text style={styles.elevateBtnText}>Make Host</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {p.role === 'host' && p.user_id !== currentUserId && (
-                    <TouchableOpacity 
-                      style={styles.revokeBtn} 
-                      onPress={() => handleRevokeHost(p.user_id, p.users.display_name)}
-                    >
-                      <Text style={styles.revokeBtnText}>Revoke</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                  <Text style={{ color: '#555', fontSize: 18 }}>›</Text>
+                </TouchableOpacity>
               ))}
             </View>
 
@@ -918,9 +934,173 @@ export default function HostScreen({ navigation }: any) {
             >
               <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 16 }}>🛑 Close Board & End Event</Text>
             </TouchableOpacity>
+
+            {/* --- DELETE CAMPAIGN BUTTON --- */}
+            <TouchableOpacity
+              style={{ backgroundColor: 'transparent', padding: 18, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#7f1d1d', marginTop: 10, marginBottom: 30 }}
+              onPress={handleDeleteCampaign}
+            >
+              <Text style={{ color: '#991b1b', fontWeight: 'bold', fontSize: 16 }}>🗑️ Delete Campaign Forever</Text>
+              <Text style={{ color: '#7f1d1d', fontSize: 11, marginTop: 4 }}>Permanently erases all data. Cannot be undone.</Text>
+            </TouchableOpacity>
           </View>
         }
       />
+
+      {/* --- DELETE CAMPAIGN CONFIRMATION MODAL --- */}
+      <Modal
+        visible={deleteCampaignModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDeleteCampaignModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setDeleteCampaignModalVisible(false)}
+        >
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <TouchableOpacity activeOpacity={1}>
+              <View style={{ backgroundColor: '#1a0808', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderTopWidth: 1, borderColor: '#7f1d1d' }}>
+                <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>⚠️ Delete Campaign</Text>
+                <Text style={{ color: '#a0a0a0', fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
+                  This will permanently delete <Text style={{ color: '#fff', fontWeight: 'bold' }}>all bets, events, participants, and ledger history</Text> for this campaign. This action{' '}
+                  <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>cannot be undone</Text>.
+                </Text>
+
+                <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 8 }}>
+                  Type the campaign name to confirm:
+                </Text>
+                <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 15, marginBottom: 10 }}>"{activeCampaignName}"</Text>
+
+                <TextInput
+                  style={{
+                    backgroundColor: '#121212',
+                    borderWidth: 1,
+                    borderColor: confirmCampaignName === activeCampaignName ? '#ff4444' : '#444',
+                    borderRadius: 8,
+                    color: '#fff',
+                    padding: 12,
+                    fontSize: 15,
+                    marginBottom: 20,
+                  }}
+                  placeholder={activeCampaignName}
+                  placeholderTextColor="#555"
+                  value={confirmCampaignName}
+                  onChangeText={setConfirmCampaignName}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <TouchableOpacity
+                  style={[
+                    { padding: 16, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
+                    confirmCampaignName === activeCampaignName
+                      ? { backgroundColor: 'rgba(153, 27, 27, 0.4)', borderColor: '#ff4444' }
+                      : { backgroundColor: '#1e1e1e', borderColor: '#333' }
+                  ]}
+                  disabled={confirmCampaignName !== activeCampaignName}
+                  onPress={async () => {
+                    try {
+                      const { error } = await supabase.rpc('delete_campaign', { p_campaign_id: activeCampaignId });
+                      if (error) throw error;
+                      await AsyncStorage.removeItem('campaignId');
+                      await AsyncStorage.removeItem('campaignName');
+                      setDeleteCampaignModalVisible(false);
+                      setConfirmCampaignName('');
+                      navigation.reset({ index: 0, routes: [{ name: 'Campaigns' }] });
+                    } catch (err: any) {
+                      Alert.alert('Delete Failed', err.message);
+                    }
+                  }}
+                >
+                  <Text style={[
+                    { fontWeight: 'bold', fontSize: 16 },
+                    confirmCampaignName === activeCampaignName ? { color: '#ff4444' } : { color: '#444' }
+                  ]}>
+                    {confirmCampaignName === activeCampaignName ? '🗑️ DELETE FOREVER' : 'Type name above to unlock'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => { setDeleteCampaignModalVisible(false); setConfirmCampaignName(''); }}
+                  style={{ marginTop: 14, padding: 12, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#666', fontSize: 15 }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* --- PLAYER ACTION SHEET --- */}
+
+      <Modal visible={playerActionSheetVisible} transparent animationType="slide" onRequestClose={() => setPlayerActionSheetVisible(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => !viewingPlayerLedger && setPlayerActionSheetVisible(false)}>
+          <View style={{ backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: viewingPlayerLedger ? '80%' : 'auto' }}>
+            {!viewingPlayerLedger ? (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text>
+                  <Text style={{ color: '#a0a0a0', fontSize: 13 }}>{selectedParticipant?.role?.toUpperCase()}</Text>
+                </View>
+                <TouchableOpacity
+                  style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  onPress={() => setViewingPlayerLedger(true)}
+                >
+                  <Text style={{ fontSize: 20 }}>📒</Text>
+                  <View>
+                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>View Ledger</Text>
+                    <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Full transaction history</Text>
+                  </View>
+                </TouchableOpacity>
+                {selectedParticipant?.role === 'guest' && (
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                    onPress={() => { setPlayerActionSheetVisible(false); handleElevateHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
+                  >
+                    <Text style={{ fontSize: 20 }}>👑</Text>
+                    <View>
+                      <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 15 }}>Make Co-Host</Text>
+                      <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Grant host permissions</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {selectedParticipant?.role === 'host' && selectedParticipant?.user_id !== currentUserId && (
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#ff4444', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                    onPress={() => { setPlayerActionSheetVisible(false); handleRevokeHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
+                  >
+                    <Text style={{ fontSize: 20 }}>🚫</Text>
+                    <View>
+                      <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 15 }}>Revoke Host</Text>
+                      <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Remove host permissions</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setPlayerActionSheetVisible(false)} style={{ marginTop: 6, padding: 14, alignItems: 'center' }}>
+                  <Text style={{ color: '#666', fontSize: 15 }}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                  <TouchableOpacity onPress={() => setViewingPlayerLedger(false)} style={{ marginRight: 12 }}>
+                    <Text style={{ color: '#00D084', fontSize: 16 }}>← Back</Text>
+                  </TouchableOpacity>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}'s Ledger</Text>
+                </View>
+                <LedgerTab
+                  userId={selectedParticipant?.user_id}
+                  campaignId={activeCampaignId}
+                  displayName={selectedParticipant?.users?.display_name}
+                />
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* --- CREATE BET MODAL --- */}
       <Modal visible={createModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>

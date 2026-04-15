@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -14,6 +15,21 @@ export default function CampaignScreen({ route, navigation }: any) {
  // Grab the params safely. If they don't exist, default to an empty string.
   const [userId, setUserId] = useState<string>(route.params?.userId || '');
   const [currentUserName, setCurrentUserName] = useState<string>(route.params?.userName || '');
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => null,    // Explicitly hide back button
+      headerBackVisible: false,  // Prevent native back button from showing after navigation
+      headerRight: () => (
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
+          style={{ marginRight: 5 }}
+        >
+          <Ionicons name="settings-outline" size={24} color="#00D084" />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, userId, currentUserName]);
 
   useEffect(() => {
     async function loadUserData() {
@@ -205,24 +221,10 @@ export default function CampaignScreen({ route, navigation }: any) {
         bounces={false} // Stops iOS from "rubber-banding" the white space
       >
         <View style={[styles.container, { flex: 1 }]}>
-          
-          {/* --- STATIC HEADER --- */}
-          <View style={styles.header}>
-            {/* --- HEADER ROW --- */}
-            <View style={styles.headerRow}>
-              <View>
-                <Text style={styles.title}>My Campaigns</Text>
-                <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
-              </View>
-              
-              {/* UPDATED NAVIGATION HERE */}
-              <TouchableOpacity 
-                onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
-                style={{ padding: 5 }}
-              >
-                <Text style={{ fontSize: 24 }}>⚙️</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={{ padding: 20, paddingBottom: 0 }}>
+            <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+          </View>
+
               
             {/* NEW: Join via Code Box */}
             <View style={styles.joinBox}>
@@ -258,7 +260,7 @@ export default function CampaignScreen({ route, navigation }: any) {
                 </TouchableOpacity>
               </>
             )}
-          </View>
+          
 
           {/* --- ZONE 1: LIVE ACTION (Mapped instead of FlatList) --- */}
           <Text style={styles.sectionTitle}>Live Action</Text>
@@ -297,10 +299,8 @@ export default function CampaignScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
-  header: { marginBottom: 15 },
-  welcomeText: { fontSize: 18, color: '#00D084', fontWeight: 'bold', marginBottom: 5 },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 40},
+  container: { flex: 1, backgroundColor: '#121212', padding: 20 },
+  welcomeText: { fontSize: 18, color: '#00D084', fontWeight: 'bold', marginBottom: 5, marginTop: 10 },
   card: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   cardText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
   createButton: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginBottom: 25 },
@@ -352,13 +352,6 @@ const styles = StyleSheet.create({
     color: '#000',
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start', // This anchors the gear to the absolute top
-    marginBottom: 20,
-    // REMOVED: marginTop and paddingHorizontal (the container handles these now!)
   },
   pageTitle: {
     color: '#fff',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { 
   StyleSheet, 
   Text, 
@@ -24,6 +24,20 @@ export default function HostAuthScreen({ route, navigation }: any) {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: '', // Keep header clear for body title
+      headerLeft: () => (
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()} 
+          style={{ paddingVertical: 8, paddingLeft: 15, paddingRight: 10 }}
+        >
+          <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -195,12 +209,6 @@ export default function HostAuthScreen({ route, navigation }: any) {
         keyboardShouldPersistTaps="handled"
         bounces={false} 
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-        </View>
 
         <View style={styles.formContainer}>
           <Text style={styles.iconTitle}>{authMode === 'forgotPassword' ? '🔒' : '👑'}</Text>
@@ -336,9 +344,7 @@ export default function HostAuthScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   innerContainer: { flexGrow: 1, padding: 25 },
-  header: { marginTop: 40, marginBottom: 20 },
-  backButton: { padding: 10, marginLeft: -10, alignSelf: 'flex-start' },
-  backText: { color: '#BB86FC', fontSize: 16, fontWeight: 'bold' },
+  header: { marginBottom: 10 },
   formContainer: { flex: 1, justifyContent: 'center', paddingBottom: 50 },
   iconTitle: { fontSize: 50, textAlign: 'center', marginBottom: 10 },
   title: { fontSize: 32, fontWeight: 'bold', color: '#fff', textAlign: 'center', marginBottom: 10 },

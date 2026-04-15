@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, TextInput, Alert, Platform, ScrollView, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../supabase'; // Ensure this path is correct for your project
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
   // Grab the data passed from the Campaigns screen
   const { userId, currentName } = route.params || {};
   
@@ -23,6 +25,12 @@ export default function SettingsScreen({ route, navigation }: any) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [currentEmail, setCurrentEmail] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false, // Hide the native header; we render our own back button in content
+    });
+  }, [navigation]);
 
   useEffect(() => {
     async function checkUserStatus() {
@@ -230,22 +238,24 @@ return (
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0} 
     >
-      
-      {/* 2. HEADER: Pinned securely to the top */}
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 5, marginRight: 15 }}>
-          <Text style={{ fontSize: 24, paddingBottom: 2 }}>🔙</Text>
-        </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
-      </View>
-
-      {/* 3. SCROLL VIEW: The Native Way */}
+      {/* 2. CONTENT SCROLL VIEW */}
       <ScrollView 
         // 🚨 THE FIX: Increased paddingBottom to 150 to create a "runway" for the bottom inputs
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 170 }} 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* In-content back button + title */}
+        <View style={{ paddingTop: insets.top + 12 }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 16 }}
+          >
+            <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.pageTitle}>Settings</Text>
+        </View>
+
         {isCheckingAuth ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100 }}>
             <ActivityIndicator size="large" color="#BB86FC" />
@@ -365,13 +375,14 @@ return (
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
+  container: { flex: 1, backgroundColor: '#121212', padding: 20 },
+  pageTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 25,
+    marginTop: 10,
   },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#fff' },
   card: {
     backgroundColor: '#1e1e1e',
     padding: 20,

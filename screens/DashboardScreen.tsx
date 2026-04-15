@@ -3,12 +3,18 @@ import {
   StyleSheet, Text, View, FlatList, TouchableOpacity, 
   ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView 
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import * as Clipboard from 'expo-clipboard';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
+import LedgerTab from '../components/LedgerTab';
+import ActionTab from '../components/ActionTab';
+import StandingsTab from '../components/StandingsTab';
+import MyBetsTab from '../components/MyBetsTab';
 
 export default function DashboardScreen({ route, navigation }: any) {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [eventsList, setEventsList] = useState<EventItem[]>([]);
   const [activeEventSwitchId, setActiveEventSwitchId] = useState('2');
@@ -47,7 +53,7 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [pitchP2PPercent, setPitchP2PPercent] = useState('50');
 
   const [myBetsModalVisible, setMyBetsModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'action' | 'standings'>('action');
+  const [activeTab, setActiveTab] = useState<'action' | 'standings' | 'ledger' | 'bets'>('action');
   const [joinCode, setJoinCode] = useState<string>('');
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
@@ -312,13 +318,18 @@ export default function DashboardScreen({ route, navigation }: any) {
 
     setIsSubmitting(true);
     try {
-      const { error: wagerError } = await supabase.from('wagers').insert([{ user_id: userId, bet_id: selectedBet.id, option_id: selectedOption.id, points_risked: pointsToRisk, status: 'pending' }]);
-      if (wagerError) throw wagerError;
+      const { error } = await supabase.rpc('place_wager', {
+        p_user_id: userId,
+        p_bet_id: selectedBet.id,
+        p_option_id: selectedOption.id,
+        p_campaign_id: campaignId,
+        p_points: pointsToRisk,
+      });
+      if (error) throw error;
 
-      const newBalance = walletBalance - pointsToRisk;
-      await supabase.from('campaign_participants').update({ global_point_balance: newBalance }).eq('user_id', userId).eq('campaign_id', campaignId);
-
-      setWalletBalance(newBalance); setModalVisible(false); loadBoard(); 
+      setWalletBalance(prev => prev - pointsToRisk);
+      setModalVisible(false);
+      loadBoard();
     } catch (error: any) {
       if (error.code === '23505') Alert.alert('Hold Up', 'You already placed a wager on this bet!');
       else Alert.alert('Error', error.message);
@@ -766,144 +777,81 @@ export default function DashboardScreen({ route, navigation }: any) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
       >
-        <ScrollView 
-          style={{ flex: 1 }} 
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[styles.container, { paddingBottom: 0 }]}>
-            {/* --- HEADER --- */}
-      <View style={styles.headerContainer}>
-        <View style={styles.topNavRow}>
+        {/* ── PERSISTENT WALLET HEADER ── */}
+        <View style={[styles.persistentHeader, { paddingTop: Math.max(insets.top, 15) }]}>
           <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
-            <Text style={styles.navPillLeaveText}>← Leave</Text>
+            <Text style={styles.navPillLeaveText}>← Back</Text>
           </TouchableOpacity>
-          
-          <View style={styles.rightNavGroup}>
-            {joinCode ? ( 
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {userRole === 'host' && (
               <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}>
                 <Text style={styles.navPillShareText}>📤 Share</Text>
-              </TouchableOpacity> 
-            ) : null}
-            
-            <TouchableOpacity style={styles.navPillMyBets} onPress={() => setMyBetsModalVisible(true)}>
-              <Text style={styles.navPillMyBetsText}>🧾 My Bets</Text>
-            </TouchableOpacity>
-            
-            {userRole === 'host' && ( 
+              </TouchableOpacity>
+            )}
+            {userRole === 'host' && (
               <View style={{ position: 'relative' }}>
                 <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
                   <Text style={styles.navPillHostText}>👑 Host</Text>
                 </TouchableOpacity>
-                
                 {pendingApprovals > 0 && (
                   <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>
-                      {pendingApprovals > 9 ? '9+' : pendingApprovals}
-                    </Text>
+                    <Text style={styles.badgeText}>{pendingApprovals > 9 ? '9+' : pendingApprovals}</Text>
                   </View>
                 )}
               </View>
             )}
+            <TouchableOpacity onPress={() => setActiveTab('ledger')} style={styles.walletBadge}>
+              <Text style={styles.walletText}>💰 {walletBalance.toLocaleString()}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {activeTab === 'action' ? (
-          <View style={styles.mainHeaderRow}>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.title}>The Action</Text>
-              {eventsList.length > 0 && (
-                <EventSwitcher events={eventsList} activeEventId={activeEventSwitchId} onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }} />
-              )}
-              <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
-            </View>
-            <TouchableOpacity style={styles.pitchButton} onPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }}><Text style={styles.pitchButtonText}>+ Pitch Bet</Text></TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.mainHeaderRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Standings</Text>
-              <Text style={styles.subtitle}>Current Leaderboard</Text>
-              <Text style={styles.balanceText}>Wallet: {walletBalance.toLocaleString()} pts</Text>
-            </View>
-          </View>
+        {/* ── TAB CONTENT ── */}
+        {activeTab === 'action' && (
+          <ActionTab
+            bets={bets}
+            p2pBets={p2pBets}
+            blindMatchups={blindMatchups}
+            eventsList={eventsList}
+            activeEventSwitchId={activeEventSwitchId}
+            onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }}
+            onPitchPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }}
+            renderBetCard={renderBetCard}
+          />
         )}
-      </View>
 
-      {/* --- CONTENT AREA --- */}
-      {activeTab === 'action' ? (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          {(() => {
-            const campaignData = [
-              ...blindMatchups.filter(b => (b.status === 'open' || b.status === 'matched') && b.event_id === null).map(b => ({ ...b, isBlind: true })),
-              ...p2pBets.filter(b => (b.status === 'open' || b.status === 'locked') && b.event_id === null).map(b => ({ ...b, isP2P: true })), 
-              ...bets.filter(b => b.event_id === null)
-            ];
-            
-            if (campaignData.length > 0) {
-              return (
-                <View style={{ marginBottom: 20 }}>
-                  <Text style={[styles.sectionHeader, { color: '#FFD700' }]}>🏆 Campaign Stakes (Overall)</Text>
-                  {campaignData.map(item => <React.Fragment key={item.id}>{renderBetCard({item})}</React.Fragment>)}
-                </View>
-              );
-            }
-            return null;
-          })()}
-          
-          {(() => {
-            const eventData = [
-              ...blindMatchups.filter(b => (b.status === 'open' || b.status === 'matched') && b.event_id !== null).map(b => ({ ...b, isBlind: true })),
-              ...p2pBets.filter(b => (b.status === 'open' || b.status === 'locked') && b.event_id !== null).map(b => ({ ...b, isP2P: true })), 
-              ...bets.filter(b => b.event_id !== null)
-            ];
-            
-            if (eventData.length > 0) {
-              return (
-                <View style={{ paddingBottom: 50 }}>
-                  <Text style={styles.sectionHeader}>📅 Active Event Action</Text>
-                  {eventData.map(item => <React.Fragment key={item.id}>{renderBetCard({item})}</React.Fragment>)}
-                </View>
-              );
-            }
-            return <View style={{ paddingBottom: 50 }}><Text style={styles.emptyText}>No open bets for this event.</Text></View>;
-          })()}
-        </ScrollView>
-      ) : (
-        <FlatList
-          scrollEnabled={false}
-          style={{ flex: 1 }}
-          data={standings}
-          keyExtractor={(item) => item.user_id}
-          contentContainerStyle={{ paddingBottom: 50 }}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item, index }) => {
-            let rankColor = '#00D084'; 
-            if (index === 0) rankColor = '#FFD700'; else if (index === 1) rankColor = '#C0C0C0'; else if (index === 2) rankColor = '#CD7F32'; 
-            return (
-              <View style={[styles.standingsCard, index === 0 && { borderColor: '#FFD700', borderWidth: 2 }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={[styles.standingsRank, { color: rankColor }]}>#{index + 1}</Text>
-                  <Text style={styles.standingsName}>{item.users?.display_name || 'Unknown Player'}<Text style={{ color: '#a0a0a0', fontWeight: 'normal', fontSize: 14 }}>{item.user_id === userId ? ' (You)' : ''}</Text></Text>
-                </View>
-                <Text style={[styles.standingsScore, { color: rankColor }]}>{item.global_point_balance.toLocaleString()} pts</Text>
-              </View>
-            );
-          }}
-        />
-      )}
+        {activeTab === 'standings' && (
+          <StandingsTab standings={standings} userId={userId} />
+        )}
 
-      {/* --- BOTTOM NAV --- */}
-      <View style={styles.bottomNavBar}>
-        <TouchableOpacity style={activeTab === 'action' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('action')}>
-          <Text style={{ fontSize: 20 }}>🎲</Text>
-          <Text style={activeTab === 'action' ? styles.bottomNavTextActive : styles.bottomNavText}>The Action</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={activeTab === 'standings' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('standings')}>
-          <Text style={{ fontSize: 20 }}>🏆</Text>
-          <Text style={activeTab === 'standings' ? styles.bottomNavTextActive : styles.bottomNavText}>Standings</Text>
-        </TouchableOpacity>
-      </View>
+        {activeTab === 'ledger' && (
+          <LedgerTab userId={userId} campaignId={campaignId} />
+        )}
+
+        {activeTab === 'bets' && (
+          <MyBetsTab combinedTickets={combinedTickets} userId={userId} />
+        )}
+
+        {/* ── BOTTOM NAV BAR ── */}
+        <View style={styles.bottomNavBar}>
+          <TouchableOpacity style={activeTab === 'action' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('action')}>
+            <Text style={{ fontSize: 20 }}>🎲</Text>
+            <Text style={activeTab === 'action' ? styles.bottomNavTextActive : styles.bottomNavText}>The Action</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={activeTab === 'bets' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('bets')}>
+            <Text style={{ fontSize: 20 }}>🧾</Text>
+            <Text style={activeTab === 'bets' ? styles.bottomNavTextActive : styles.bottomNavText}>My Bets</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={activeTab === 'ledger' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('ledger')}>
+            <Text style={{ fontSize: 20 }}>📒</Text>
+            <Text style={activeTab === 'ledger' ? styles.bottomNavTextActive : styles.bottomNavText}>Ledger</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={activeTab === 'standings' ? styles.bottomNavBtnActive : styles.bottomNavBtn} onPress={() => setActiveTab('standings')}>
+            <Text style={{ fontSize: 20 }}>🏆</Text>
+            <Text style={activeTab === 'standings' ? styles.bottomNavTextActive : styles.bottomNavText}>Standings</Text>
+          </TouchableOpacity>
+        </View>
 
       {/* --- BLIND BID MODAL --- */}
       <Modal visible={blindModalVisible} animationType="slide" transparent={true} statusBarTranslucent={true}>
@@ -1298,113 +1246,13 @@ export default function DashboardScreen({ route, navigation }: any) {
       </Modal>
 
       {/* --- MY BETS (LIVE RECEIPTS) MODAL --- */}
-      <Modal visible={myBetsModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.gradeModalContent, { maxHeight: '80%', width: '100%' }]}>
-            <Text style={styles.modalTitle}>My Live Tickets</Text>
-            <FlatList
-              data={combinedTickets}
-              keyExtractor={(item, index) => item.id ? `${item.type}-${item.id}` : index.toString()}
-              ListEmptyComponent={<Text style={{ color: '#666', textAlign: 'center', marginTop: 20 }}>No bets placed yet. Get in the action!</Text>}
-              renderItem={({ item }) => {
-                const isP2P = item.type === 'p2p';
-                const isBlind = item.type === 'blind'; 
-                let wagerStatus = item.status || 'pending'; 
-                let question, pick, odds, wagerAmt, potentialWin, opponentName;
-                let isA: boolean = false;
-                let oppId: string | null | undefined = null;
-
-                if (isBlind) {
-                  isA = String(item.side_a_user_id) === String(userId);
-                  oppId = isA ? item.side_b_user_id : item.side_a_user_id;
-
-                  if (!item.user_2_id) {
-                    opponentName = 'Waiting for challenger...';
-                    question = item.question; 
-                    pick = "Pending Match"; 
-                    odds = "?"; 
-                    wagerAmt = item.base_amount; 
-                    potentialWin = "???";
-                  } else {
-                    const opponentProfile = standings.find(s => String(s.user_id) === String(oppId));
-                    opponentName = opponentProfile?.users?.display_name || 'Unknown Player';
-                    question = item.question;
-                    pick = isA ? item.side_a_label : item.side_b_label;
-                    
-                    const baseAmt = parseFloat(item.base_amount) || 0;
-                    const finalMulti = parseFloat(item.final_multiplier) || 0;
-
-                    odds = finalMulti.toFixed(2);
-                    wagerAmt = isA ? baseAmt : Math.trunc((baseAmt * finalMulti) - baseAmt);
-                    potentialWin = Math.trunc(baseAmt * finalMulti);
-                  }
-                }
-                else if (isP2P) {
-                  isA = String(item.side_a_user_id) === String(userId);
-                  oppId = isA ? item.side_b_user_id : item.side_a_user_id;
-                  if (oppId) {
-                    const opponentProfile = standings.find(s => String(s.user_id) === String(oppId));
-                    opponentName = opponentProfile?.users?.display_name || 'Unknown Player';
-                  } else { opponentName = 'Waiting for opponent...'; }
-
-                  question = item.question;
-                  pick = isA ? item.option_a_label : item.option_b_label;
-                  odds = isA ? Number(item.multiplier).toFixed(2) : (item.challenger_cost > 0 ? (Number(item.total_pot) / Number(item.challenger_cost)).toFixed(2) : '1.00');
-                  wagerAmt = isA ? item.wager_amount : item.challenger_cost;
-                  potentialWin = item.total_pot;
-                } else {
-                  question = item.bets?.question || 'Unknown Bet'; pick = item.bet_options?.label || 'Unknown Pick'; odds = item.bet_options?.multiplier || 1;
-                  wagerAmt = item.points_risked || 0; potentialWin = Math.floor(wagerAmt * odds);
-                }
-
-                let statusText = '🟡 PENDING'; let statusColor = '#FFD700'; let statusBg = 'rgba(255, 215, 0, 0.2)';
-                if (wagerStatus === 'won' || ((isP2P || isBlind) && wagerStatus === 'resolved')) {
-                  statusText = '🟢 ' + ((isP2P || isBlind) ? 'RESOLVED' : 'WON'); statusColor = '#00D084'; statusBg = 'rgba(0, 208, 132, 0.2)';
-                } else if (wagerStatus === 'lost') {
-                  statusText = '🔴 LOST'; statusColor = '#ff4444'; statusBg = 'rgba(255, 68, 68, 0.2)';
-                }
-
-                return (
-                  <View style={[styles.receiptCard, { borderColor: statusColor, opacity: wagerStatus === 'pending' || wagerStatus === 'open' || wagerStatus === 'locked' || wagerStatus === 'matched' ? 1 : 0.6 }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <View style={{ flex: 1, paddingRight: 10 }}>
-                        {isBlind && <Text style={{ color: '#BB86FC', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🤝 BLIND VS. {opponentName?.toUpperCase()}</Text>}
-                        {isP2P && <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🥊 P2P VS. {opponentName?.toUpperCase()}</Text>}
-                        <Text style={styles.receiptQuestion}>{question}</Text>
-                      </View>
-                      <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor, borderWidth: 1 }]}>
-                        <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
-                      </View>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.receiptAmount}>Pick: <Text style={styles.receiptPick}>{pick}</Text></Text>
-                        <Text style={styles.receiptAmount}>Odds: <Text style={styles.receiptOdds}>{odds}x</Text></Text>
-                      </View>
-                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                        <Text style={styles.receiptAmount}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{wagerAmt} pts</Text></Text>
-                        <Text style={[ statusColor === '#FFD700' ? styles.receiptToWin : (statusColor === '#00D084' ? styles.receiptWon : styles.receiptLost), { marginTop: 4 } ]}>
-                          {statusColor === '#00D084' ? `Payout: ${potentialWin} pts` : `Win: ${potentialWin} pts`}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              }}
-            />
-            <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 10 }} onPress={() => setMyBetsModalVisible(false)}><Text style={styles.closeSlipText}>Close</Text></TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-          </View>
-        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 15, paddingTop: 50 },
+  container: { flex: 1, backgroundColor: '#121212' },
   headerContainer: { marginBottom: 15 },
   topNavRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   rightNavGroup: { flexDirection: 'row', gap: 10 },
@@ -1413,8 +1261,40 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: '#00D084', marginTop: 5, fontWeight: '600' },
   balanceText: { fontSize: 16, color: '#a0a0a0', marginTop: 5 },
 
-  navPillLeave: { backgroundColor: '#2a2a2a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
-  navPillLeaveText: { color: '#ff4444', fontWeight: 'bold', fontSize: 14 },
+  /* ── Persistent Header ── */
+  persistentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingBottom: 12,
+    backgroundColor: '#121212',
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e1e1e',
+  },
+  persistentHeaderLeft: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  walletBadge: {
+    backgroundColor: 'rgba(0, 208, 132, 0.1)',
+    borderWidth: 1,
+    borderColor: '#00D084',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: 'center',
+    minWidth: 100,
+    flexShrink: 0,
+  },
+  walletText: {
+    color: '#00D084',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+
+  navPillLeave: { paddingVertical: 8, paddingLeft: 0, paddingRight: 10 },
+  navPillLeaveText: { color: '#00D084', fontWeight: '600', fontSize: 16 },
   navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
   navPillHostText: { color: '#FFD700', fontWeight: 'bold', fontSize: 14 },
   navPillShare: { backgroundColor: 'rgba(0, 208, 132, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#00D084' },

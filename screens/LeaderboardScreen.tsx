@@ -81,7 +81,7 @@ export default function LeaderboardScreen({ navigation }: any) {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Standings</Text>
-        <TouchableOpacity onPress={fetchLeaderboard}>
+        <TouchableOpacity onPress={fetchLeaderboard} style={styles.refreshButton}>
           <Text style={styles.refreshText}>↻ Refresh</Text>
         </TouchableOpacity>
       </View>
@@ -98,9 +98,10 @@ export default function LeaderboardScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, marginTop: 10 },
+  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 10 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
   title: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
+  refreshButton: { paddingVertical: 8, paddingLeft: 10 },
   refreshText: { color: '#00D084', fontSize: 16, fontWeight: 'bold' },
   emptyText: { color: '#666', textAlign: 'center', marginTop: 40 },
   
