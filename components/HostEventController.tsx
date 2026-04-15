@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator, Switch } from 'react-native';
 import { supabase } from '../supabase';
 
 export type TriggerType = 'manual' | 'auto';
@@ -16,23 +16,42 @@ export interface HostEvent {
 
 interface HostEventControllerProps {
   event: HostEvent;
-  onEventChanged: () => void;
+  onEventChanged: (silent?: boolean) => void;
   onEditRequest?: () => void;
 }
 
 export default function HostEventController({ event, onEventChanged, onEditRequest }: HostEventControllerProps) {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  // Local state for optimistic UI
+  const [localStatus, setLocalStatus] = useState<EventStatus>(event.status);
 
-  const handleOpenEvent = async () => {
+  // Sync local status if the prop changes (e.g. from a background refresh)
+  useEffect(() => {
+    setLocalStatus(event.status);
+  }, [event.status]);
+
+  const handleToggleStatus = async (value: boolean) => {
+    const newStatus: EventStatus = value ? 'live' : 'scheduled';
+    
+    // 1. Optimistic Update
+    setLocalStatus(newStatus);
     setIsProcessing(true);
+
     try {
       const { error } = await supabase
         .from('events')
-        .update({ status: 'live' })
+        .update({ status: newStatus })
         .eq('id', event.id);
 
-      if (error) throw error;
-      onEventChanged();
+      if (error) {
+        // Rollback on error
+        setLocalStatus(event.status);
+        throw error;
+      }
+      
+      // 2. Silent Refresh (updates other global states without showing the full-page loader)
+      onEventChanged(true);
     } catch (error: any) {
       if (Platform.OS === 'web') window.alert(error.message);
       else Alert.alert('Error', error.message);
@@ -43,23 +62,22 @@ export default function HostEventController({ event, onEventChanged, onEditReque
 
   const handleCloseEvent = async () => {
     const title = 'Close & Refund?';
-    const msg = 'This will lock the board and securely refund all un-graded bets to players.';
+    const msg = 'This will lock the board and securely refund all un-graded bets to players for this event.';
 
     const executeClose = async () => {
-      setIsProcessing(true);
+      setIsClosing(true);
       try {
-        // Option B: Safety-first RPC call mimicking the campaign closure
         const { error } = await supabase.rpc('close_event_and_refund', { 
           p_event_id: event.id 
         });
 
         if (error) throw error;
-        onEventChanged();
+        onEventChanged(); // Full refresh might be better here as it's a major state change
       } catch (error: any) {
         if (Platform.OS === 'web') window.alert(error.message);
         else Alert.alert('Error closing event', error.message);
       } finally {
-        setIsProcessing(false);
+        setIsClosing(false);
       }
     };
 
@@ -68,237 +86,197 @@ export default function HostEventController({ event, onEventChanged, onEditReque
     } else {
       Alert.alert(title, msg, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Close Event', style: 'destructive', onPress: executeClose }
+        { text: 'Close', style: 'destructive', onPress: executeClose }
       ]);
     }
   };
 
+  const timeString = new Date(event.start_time).toLocaleTimeString([], { 
+    weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+  });
 
-  if (event.status === 'completed') {
-    return (
-      <View style={[styles.container, styles.completedContainer]}>
-        <Text style={styles.warningBanner}>⚠️ Betting is temporarily closed.</Text>
-        <Text style={styles.completedText}>🔒 This event has been completed and locked.</Text>
-        <TouchableOpacity 
-          style={styles.reopenButton} 
-          onPress={handleOpenEvent}
-          disabled={isProcessing}
-        >
-          <Text style={styles.reopenButtonText}>
-            {isProcessing ? 'Processing...' : 'Unlock Board (Re-Open)'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const isActive = localStatus === 'live';
 
-  if (event.status === 'live') {
-    return (
-      <View style={styles.container}>
-        <View style={styles.stateHeaderRow}>
-          <View>
-            <Text style={styles.stateTitle}>🟢 Event is Live</Text>
-            <Text style={styles.stateSubtitle}>The board is open. Wagers are active.</Text>
-          </View>
-          {onEditRequest && (
-            <TouchableOpacity style={styles.editButton} onPress={onEditRequest}>
-              <Text style={styles.editButtonText}>✏️ Edit Settings</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <TouchableOpacity 
-          style={styles.dangerButton} 
-          onPress={handleCloseEvent}
-          disabled={isProcessing}
-        >
-          <Text style={styles.dangerButtonText}>
-            {isProcessing ? 'Processing...' : '🔒 Close Event (Lock Board)'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  // event.status === 'scheduled'
-  if (event.trigger_type === 'auto') {
-    const timeString = new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return (
-      <View style={styles.container}>
-        <View style={styles.stateHeaderRow}>
-          <Text style={styles.stateTitle}>⏳ Scheduled Event Context</Text>
-          {onEditRequest && (
-            <TouchableOpacity style={styles.editButton} onPress={onEditRequest}>
-              <Text style={styles.editButtonText}>✏️ Edit Settings</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.autoBlock}>
-          <Text style={styles.autoText}>⏰ Auto-opens at {timeString}</Text>
-          <TouchableOpacity 
-            style={styles.secondaryButton} 
-            onPress={handleOpenEvent}
-            disabled={isProcessing}
-          >
-            <Text style={styles.secondaryButtonText}>
-               {isProcessing ? 'Opening...' : 'Force Open Early'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  // Scheduled and Manual
   return (
     <View style={styles.container}>
-      <View style={styles.stateHeaderRow}>
-        <View style={{ flex: 1, paddingRight: 10 }}>
-          <Text style={styles.stateTitle}>⏳ Scheduled Event Context</Text>
-          <Text style={styles.stateSubtitle}>Bets are locked until you manually open the floor.</Text>
+      {/* Left side: Details */}
+      <TouchableOpacity 
+        style={styles.detailsArea} 
+        onPress={onEditRequest}
+        activeOpacity={0.7}
+      >
+        <View style={styles.headerRow}>
+          <Text style={styles.eventName} numberOfLines={1}>{event.name}</Text>
+          <Text style={[styles.statusBadge, isActive ? styles.statusLive : localStatus === 'completed' ? styles.statusCompleted : styles.statusLocked]}>
+            {(localStatus || 'UNKNOWN').toUpperCase()}
+          </Text>
         </View>
-        {onEditRequest && (
-          <TouchableOpacity style={styles.editButton} onPress={onEditRequest}>
-            <Text style={styles.editButtonText}>✏️ Edit Settings</Text>
+        
+        <View style={styles.infoRow}>
+          <Text style={styles.infoText}>⏰ {timeString}</Text>
+        </View>
+
+        {(event.description || event.trigger_type) && (
+          <Text style={styles.descriptionText} numberOfLines={1}>
+            🕹️ {(event.trigger_type || 'manual').toUpperCase()} {event.description ? `• ${event.description}` : ''}
+          </Text>
+        )}
+        
+        <Text style={styles.editHint}>Tap to edit</Text>
+      </TouchableOpacity>
+
+      {/* Right side: Controls */}
+      <View style={styles.controlsArea}>
+        {localStatus !== 'completed' ? (
+          <>
+            <View style={styles.toggleWrapper}>
+              <Text style={[styles.toggleLabel, !isActive && styles.labelLocked]}>LOCKED</Text>
+              <Switch
+                trackColor={{ false: '#333', true: 'rgba(0, 208, 132, 0.3)' }}
+                thumbColor={isActive ? '#00D084' : '#666'}
+                ios_backgroundColor="#333"
+                onValueChange={handleToggleStatus}
+                value={isActive}
+                disabled={isProcessing || isClosing}
+              />
+              <Text style={[styles.toggleLabel, isActive && styles.labelActive]}>ACTIVE</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.closeButton, isClosing && { opacity: 0.5 }]} 
+              onPress={handleCloseEvent}
+              disabled={isClosing}
+            >
+              {isClosing ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.closeButtonText}>Close</Text>}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity 
+            style={styles.reopenButton} 
+            onPress={() => handleToggleStatus(true)}
+            disabled={isProcessing || isClosing}
+          >
+            <Text style={styles.reopenButtonText}>Re-Open</Text>
           </TouchableOpacity>
         )}
       </View>
-      <TouchableOpacity 
-        style={styles.primaryButton} 
-        onPress={handleOpenEvent}
-        disabled={isProcessing}
-      >
-        <Text style={styles.primaryButtonText}>
-          {isProcessing ? 'Opening...' : '🔓 Open Action (Live)'}
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1e1e1e',
-    padding: 16,
+    backgroundColor: '#1E1E1E',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#333',
-    marginBottom: 20,
-    marginTop: 10,
-  },
-  completedContainer: {
-    borderColor: '#444',
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  completedText: {
-    color: '#a0a0a0',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  stateTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  stateSubtitle: {
-    color: '#a0a0a0',
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  primaryButton: {
-    backgroundColor: '#00D084',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    shadowColor: '#00D084',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  primaryButtonText: {
-    color: '#121212',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  dangerButton: {
-    backgroundColor: '#ff4444',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    shadowColor: '#ff4444',
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  dangerButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  autoBlock: {
+    marginBottom: 15,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#121212',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#333',
-    marginTop: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  autoText: {
-    color: '#FFD700',
-    fontSize: 14,
-    fontWeight: 'bold',
+  detailsArea: {
     flex: 1,
+    padding: 15,
+    backgroundColor: 'rgba(255, 255, 255, 0.01)',
   },
-  secondaryButton: {
-    backgroundColor: 'transparent',
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  eventName: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    flexShrink: 1,
+  },
+  statusBadge: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginLeft: 10,
+  },
+  statusLive: { backgroundColor: 'rgba(0, 208, 132, 0.2)', color: '#00D084' },
+  statusLocked: { backgroundColor: 'rgba(255, 184, 0, 0.1)', color: '#FFB800' },
+  statusCompleted: { backgroundColor: 'rgba(255, 68, 68, 0.2)', color: '#FF4444' },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  infoText: {
+    color: '#A0A0A0',
+    fontSize: 12,
+  },
+  descriptionText: {
+    color: '#666',
+    fontSize: 11,
+    marginBottom: 8,
+  },
+  editHint: {
+    color: '#444',
+    fontSize: 9,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  controlsArea: {
+    width: 120,
+    padding: 10,
+    alignItems: 'center',
+    borderLeftWidth: 1,
+    borderLeftColor: '#2a2a2a',
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    height: '100%',
+    justifyContent: 'center',
+  },
+  closeButton: {
+    backgroundColor: '#7f1d1d', // Muted dark red
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  closeButtonText: {
+    color: '#ff9999',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  toggleWrapper: {
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 8,
+  },
+  toggleLabel: {
+    fontSize: 8,
+    fontWeight: 'bold',
+    color: '#444',
+    marginVertical: 2,
+  },
+  labelActive: { color: '#00D084' },
+  labelLocked: { color: '#FFB800' },
+  reopenButton: {
     borderWidth: 1,
     borderColor: '#00D084',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 6,
-  },
-  secondaryButtonText: {
-    color: '#00D084',
-    fontWeight: 'bold',
-    fontSize: 12,
-  },
-  warningBanner: {
-    color: '#FFD700',
-    fontWeight: 'bold',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  reopenButton: {
-    backgroundColor: '#FFD700',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 15,
+    width: '100%',
+    alignItems: 'center',
   },
   reopenButtonText: {
-    color: '#121212',
+    color: '#00D084',
     fontWeight: 'bold',
-  },
-  stateHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  editButton: {
-    backgroundColor: '#2a2a2a',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#444'
-  },
-  editButtonText: {
-    color: '#e0e0e0',
     fontSize: 12,
   },
 });

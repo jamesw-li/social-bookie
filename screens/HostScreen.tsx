@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, Text, View, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView 
+import {
+  StyleSheet, Text, View, FlatList, TouchableOpacity,
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
@@ -20,17 +20,18 @@ export default function HostScreen({ navigation }: any) {
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [bets, setBets] = useState<any[]>([]);
-  
+
   // --- DUAL INBOX STATES ---
-  const [proposals, setProposals] = useState<any[]>([]); 
-  const [pendingPitches, setPendingPitches] = useState<any[]>([]); 
-  
+  const [proposals, setProposals] = useState<any[]>([]);
+  const [pendingPitches, setPendingPitches] = useState<any[]>([]);
+
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [activeCampaignName, setActiveCampaignName] = useState<string>('');
   const [participants, setParticipants] = useState<any[]>([]);
   const [deleteCampaignModalVisible, setDeleteCampaignModalVisible] = useState(false);
   const [confirmCampaignName, setConfirmCampaignName] = useState('');
-  
+  const [campaignJoinCode, setCampaignJoinCode] = useState('');
+
   // Grading & Creation States
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
   const [selectedBet, setSelectedBet] = useState<any>(null);
@@ -43,9 +44,9 @@ export default function HostScreen({ navigation }: any) {
   const [playerActionSheetVisible, setPlayerActionSheetVisible] = useState(false);
   const [viewingPlayerLedger, setViewingPlayerLedger] = useState(false);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
-  
+
   // Bet Type State
-  const [betType, setBetType] = useState('prop'); 
+  const [betType, setBetType] = useState('prop');
   const [newQuestion, setNewQuestion] = useState('');
   const [newOptions, setNewOptions] = useState([
     { id: 1, label: '', odds: '2.0' },
@@ -57,7 +58,7 @@ export default function HostScreen({ navigation }: any) {
   const [p2pWager, setP2pWager] = useState('100');
   const [p2pMultiplier, setP2pMultiplier] = useState('2.0');
   const [p2pPercent, setP2pPercent] = useState('50');
-  
+
   // --- BLIND MATCH STATES ---
   const [blindBase, setBlindBase] = useState('100');
   const [blindMultiplier, setBlindMultiplier] = useState('2.0');
@@ -66,6 +67,9 @@ export default function HostScreen({ navigation }: any) {
 
   const [pendingHouseBets, setPendingHouseBets] = useState<any[]>([]);
   const [pendingBlindBets, setPendingBlindBets] = useState<any[]>([]);
+
+  const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'bets' | 'grading' | 'pitches' | 'participants' | 'campaign'>('dashboard');
+  const [drillDownEventId, setDrillDownEventId] = useState<string | null>(null);
 
   // Sync Percent when Multiplier changes
   const updateMultiplier = (val: string) => {
@@ -98,8 +102,39 @@ export default function HostScreen({ navigation }: any) {
 
   const [walletBalance, setWalletBalance] = useState(0);
 
+  const getGlobalEventId = () => {
+    const g = eventsList.find(e => e.name === 'Global');
+    return g ? g.id : null;
+  };
+
   useEffect(() => {
     fetchHostData();
+    
+    // Header sync
+    const getViewTitle = (view: string) => {
+      switch(view) {
+        case 'events': return 'Manage Events';
+        case 'bets': return 'Manage Bets';
+        case 'grading': return 'Ready for Grading';
+        case 'pitches': return 'Master Inbox';
+        case 'participants': return 'Manage Participants';
+        case 'campaign': return 'Campaign Settings';
+        default: return 'Host Control';
+      }
+    };
+
+    navigation.setOptions({
+      title: getViewTitle(activeView),
+      headerLeft: activeView === 'dashboard' ? undefined : () => (
+        <TouchableOpacity 
+          onPress={() => setActiveView('dashboard')} 
+          style={{ marginRight: 20, padding: 5 }}
+        >
+          <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold' }}>← Back</Text>
+        </TouchableOpacity>
+      ),
+      headerTintColor: '#FFD700'
+    });
 
     const proposalSub = supabase.channel('public:guest_proposals')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData()).subscribe();
@@ -109,40 +144,48 @@ export default function HostScreen({ navigation }: any) {
 
     const blindSub = supabase.channel('public:blind_matchups_host')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => fetchHostData()).subscribe();
-    
-      const betsSub = supabase.channel('public:bets_host')
+
+    const betsSub = supabase.channel('public:bets_host')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => fetchHostData()).subscribe();
 
-    return () => { 
-      supabase.removeChannel(proposalSub); 
+    AsyncStorage.getItem('campaignJoinCode').then(code => setCampaignJoinCode(code || ''));
+
+    return () => {
+      supabase.removeChannel(proposalSub);
       supabase.removeChannel(pitchSub);
       supabase.removeChannel(blindSub);
       supabase.removeChannel(betsSub);
     };
   }, []);
 
-  async function fetchHostData(overrideEventId?: string | null) {
-    setLoading(true);
+  async function fetchHostData(overrideEventId?: string | null, silent: boolean = false) {
+    if (!silent) setLoading(true);
     try {
       const myUserId = await AsyncStorage.getItem('userId');
       setCurrentUserId(myUserId);
       const campaignId = await AsyncStorage.getItem('campaignId');
       const storedCampaignName = await AsyncStorage.getItem('campaignName');
-      setActiveCampaignId(campaignId); 
+      setActiveCampaignId(campaignId);
       setActiveCampaignName(storedCampaignName || '');
-      
+
+      const { data: campaignData } = await supabase.from('campaigns').select('join_code').eq('id', campaignId).single();
+      if (campaignData?.join_code) {
+        setCampaignJoinCode(campaignData.join_code);
+        await AsyncStorage.setItem('campaignJoinCode', campaignData.join_code);
+      }
+
       const { data: participantData } = await supabase
         .from('campaign_participants')
         .select('global_point_balance')
-        .eq('campaign_id', campaignId) 
+        .eq('campaign_id', campaignId)
         .eq('user_id', myUserId)
         .single();
 
       if (participantData) {
         setWalletBalance(participantData.global_point_balance);
       }
-      
-      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', campaignId);
+
+      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time, trigger_type, description').eq('campaign_id', campaignId).order('start_time', { ascending: true });
       const eventsDataList = campaignEvents || [];
       setEventsList(eventsDataList);
 
@@ -157,32 +200,38 @@ export default function HostScreen({ navigation }: any) {
           return;
         }
       }
-      
+
       setActiveEventId(targetEventId);
 
-      const eventFilter = `event_id.eq.${targetEventId},event_id.is.null`;
+      // Initialize drillDownEventId to Global if not set
+      if (!drillDownEventId) {
+        const globalEvent = eventsDataList.find((e: any) => e.name === 'Global');
+        if (globalEvent) {
+          setDrillDownEventId(globalEvent.id);
+        }
+      }
 
       // 1. Participants
       const { data: pData } = await supabase.from('campaign_participants').select('user_id, role, users(display_name)').eq('campaign_id', campaignId);
       setParticipants(pData ?? []);
 
       // 2. Fetch Regular House Bets (Active)
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label )`).or(eventFilter).in('status', ['open', 'locked', 'graded']);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, event_id, bet_options!bet_options_bet_id_fkey ( id, label )`).eq('campaign_id', campaignId).in('status', ['open', 'locked', 'graded']);
 
       // 3. Fetch Approved P2P Bets (Active)
-      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).or(eventFilter).in('status', ['open', 'locked']);
+      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).in('status', ['open', 'locked']);
 
       // 4. Fetch Blind Matchups (Active)
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).or(eventFilter).in('status', ['open', 'matched']);
+      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).in('status', ['open', 'matched']);
 
       const safeBets = betsData ?? [];
       const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true }));
       const safeBlind = (blindData ?? []).map(b => ({ ...b, isBlind: true }));
       const allBets = [...safeBlind, ...safeP2P, ...safeBets];
-      setBets(allBets.sort((a,b) => (a.event_id === null ? -1 : (b.event_id === null ? 1 : 0))));
+      setBets(allBets.sort((a, b) => (a.event_id === null ? -1 : (b.event_id === null ? 1 : 0))));
 
       // 5. Fetch Inbox 1: Ideas
-      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').or(eventFilter).eq('status', 'pending');
+      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').eq('campaign_id', campaignId).eq('status', 'pending');
       setProposals(propsData ?? []);
 
       // 6. Fetch Inbox 2: Challenges
@@ -194,8 +243,8 @@ export default function HostScreen({ navigation }: any) {
       const { data: houseBetsData, error: houseError } = await supabase
         .from('bets')
         // 🚨 Add the users fetch to the select statement!
-        .select('*, bet_options!bet_options_bet_id_fkey(*), users!creator_id(display_name)') 
-        .or(eventFilter)
+        .select('*, bet_options!bet_options_bet_id_fkey(*), users!creator_id(display_name)')
+        .eq('campaign_id', campaignId)
         .eq('status', 'pending');
 
       if (houseError) console.error("House Bet Fetch Error:", houseError);
@@ -204,7 +253,7 @@ export default function HostScreen({ navigation }: any) {
       // --- 🚨 THE FIX: INBOX 4 (BLIND MATCHUPS) ---
       const { data: pendingBlindData, error: blindError } = await supabase
         .from('blind_matchups')
-        .select('*, users!user_1_id(display_name)') 
+        .select('*, users!user_1_id(display_name)')
         .eq('campaign_id', campaignId)
         .eq('status', 'pending_approval');
 
@@ -218,11 +267,11 @@ export default function HostScreen({ navigation }: any) {
       setLoading(false);
     }
   }
-  
+
   // --- IDEA ACTIONS (INBOX 1) ---
   function convertProposalToBet(proposal: any) {
     setNewQuestion(proposal.suggestion);
-    setActiveProposalId(proposal.id); 
+    setActiveProposalId(proposal.id);
     setCreateModalVisible(true);
   }
 
@@ -237,7 +286,7 @@ export default function HostScreen({ navigation }: any) {
       const { error } = await supabase.from('p2p_prop_bets').update({ status: 'open' }).eq('id', pitchId);
       if (error) throw error;
       Alert.alert('Approved!', 'The challenge is now live on the board.');
-      fetchHostData(); 
+      fetchHostData();
     } catch (error: any) { Alert.alert('Error approving pitch', error.message); }
   }
 
@@ -296,7 +345,7 @@ export default function HostScreen({ navigation }: any) {
   }
 
   function handleAddOption() {
-    if (betType === 'over_under') return; 
+    if (betType === 'over_under') return;
     setNewOptions([...newOptions, { id: Date.now(), label: '', odds: '1.0' }]);
   }
 
@@ -311,7 +360,7 @@ export default function HostScreen({ navigation }: any) {
         const msg = 'Fill out all fields.';
         return Platform.OS === 'web' ? window.alert(`Hold up\n\n${msg}`) : Alert.alert('Hold up', msg);
       }
-      
+
       const baseAmt = parseInt(blindBase);
       const multiAmt = parseFloat(blindMultiplier);
       if (isNaN(baseAmt) || baseAmt <= 0) {
@@ -338,12 +387,12 @@ export default function HostScreen({ navigation }: any) {
         }]);
 
         if (error) throw error;
-        
+
         setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setBlindBase('100'); setBlindMultiplier('2.0');
         setCreateModalVisible(false);
-        fetchHostData(); 
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message); 
+        fetchHostData();
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
       } finally { setIsCreating(false); }
       return;
     }
@@ -354,7 +403,7 @@ export default function HostScreen({ navigation }: any) {
         const msg = 'Fill out all fields.';
         return Platform.OS === 'web' ? window.alert(`Hold up\n\n${msg}`) : Alert.alert('Hold up', msg);
       }
-      
+
       const wagerAmt = parseFloat(p2pWager);
       const multiAmt = parseFloat(p2pMultiplier);
       if (isNaN(wagerAmt) || wagerAmt <= 0) {
@@ -378,16 +427,16 @@ export default function HostScreen({ navigation }: any) {
           option_b_label: p2pOptionB,
           wager_amount: wagerAmt,
           multiplier: multiAmt,
-          status: 'open' 
+          status: 'open'
         }]);
 
         if (error) throw error;
-        
+
         setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setP2pWager('100'); setP2pMultiplier('2.0');
         setCreateModalVisible(false);
         fetchHostData();
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message); 
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
       } finally { setIsCreating(false); }
       return;
     }
@@ -415,15 +464,17 @@ export default function HostScreen({ navigation }: any) {
 
     setIsCreating(true);
     try {
-      const { data: betData, error: betError } = await supabase
-        .from('bets')
-        .insert([{ 
-          event_id: hostEventScope, 
-          type: betType, 
-          question: newQuestion, 
-          status: 'open',
-          creator_id: currentUserId 
-        }])
+        const currentCampId = activeCampaignId || await AsyncStorage.getItem('campaignId');
+        const { data: betData, error: betError } = await supabase
+          .from('bets')
+          .insert([{
+            event_id: hostEventScope,
+            type: betType,
+            question: newQuestion,
+            status: 'open',
+            campaign_id: currentCampId,
+            creator_id: currentUserId
+          }])
         .select().single();
 
       if (betError) throw betError;
@@ -438,17 +489,17 @@ export default function HostScreen({ navigation }: any) {
         await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', activeProposalId);
       }
 
-      setNewQuestion(''); setActiveProposalId(null); handleToggleBetType('prop'); 
-      setCreateModalVisible(false); fetchHostData(); 
-    } catch (error: any) { 
-      Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message); 
+      setNewQuestion(''); setActiveProposalId(null); handleToggleBetType('prop');
+      setCreateModalVisible(false); fetchHostData();
+    } catch (error: any) {
+      Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
     } finally { setIsCreating(false); }
   }
 
   // ==========================================
   // --- BET MANAGEMENT ACTIONS ---
   // ==========================================
-  function openGradeModal(bet: any) { 
+  function openGradeModal(bet: any) {
     if (bet.isP2P && (!bet.side_a_user_id || !bet.side_b_user_id)) {
       const msg = 'Both sides of this Prop Challenge must be claimed before it can be graded.\n\nYou can Re-Open it to allow claims, or Trash it to refund the lone player.';
       if (Platform.OS === 'web') return window.alert(`Cannot Grade\n\n${msg}`);
@@ -461,10 +512,10 @@ export default function HostScreen({ navigation }: any) {
       return Alert.alert('Cannot Grade', msg);
     }
 
-    setSelectedBet(bet); 
-    setGradeModalVisible(true); 
+    setSelectedBet(bet);
+    setGradeModalVisible(true);
   }
-  
+
   async function toggleBetStatus(betId: string, newStatus: string) {
     const targetBet = bets.find(b => b.id === betId);
 
@@ -476,9 +527,9 @@ export default function HostScreen({ navigation }: any) {
         const table = targetBet?.isP2P ? 'p2p_prop_bets' : targetBet?.isBlind ? 'blind_matchups' : 'bets';
         await supabase.from(table).update({ status: newStatus }).eq('id', betId);
       }
-      fetchHostData(); 
-    } catch (error: any) { 
-      Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      fetchHostData();
+    } catch (error: any) {
+      Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
     }
   }
 
@@ -499,9 +550,9 @@ export default function HostScreen({ navigation }: any) {
           const { error } = await supabase.rpc('delete_bet_and_refund', { target_bet_id: betId });
           if (error) throw error;
         }
-        fetchHostData(); 
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+        fetchHostData();
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
       }
     };
 
@@ -523,8 +574,8 @@ export default function HostScreen({ navigation }: any) {
       try {
         await supabase.rpc('undo_resolve_bet', { target_bet_id: betId });
         fetchHostData();
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
       }
     };
 
@@ -543,36 +594,36 @@ export default function HostScreen({ navigation }: any) {
       // --- NEW: BLIND GRADING EXECUTION ---
       if (selectedBet.isBlind) {
         const winnerSide = winningOptionId === 'A' ? 'A' : 'B';
-        const { error } = await supabase.rpc('grade_blind_match', { 
-          p_matchup_id: selectedBet.id, 
-          p_winning_side: winnerSide 
+        const { error } = await supabase.rpc('grade_blind_match', {
+          p_matchup_id: selectedBet.id,
+          p_winning_side: winnerSide
         });
         if (error) throw error;
-      } 
+      }
       // --- EXISTING P2P & HOUSE GRADING ---
       else if (selectedBet.isP2P) {
         const winnerSide = winningOptionId === 'A' ? 'A' : 'B';
-        const { error } = await supabase.rpc('resolve_p2p_bet', { 
-          p_bet_id: selectedBet.id, 
-          p_winner_side: winnerSide 
+        const { error } = await supabase.rpc('resolve_p2p_bet', {
+          p_bet_id: selectedBet.id,
+          p_winner_side: winnerSide
         });
         if (error) throw error;
       } else {
-        const { error } = await supabase.rpc('resolve_bet', { 
-          target_bet_id: selectedBet.id, 
+        const { error } = await supabase.rpc('resolve_bet', {
+          target_bet_id: selectedBet.id,
           p_winning_option_id: winningOptionId,
           p_campaign_id: activeCampaignId,
         });
         if (error) throw error;
       }
 
-      setGradeModalVisible(false); 
-      fetchHostData(); 
+      setGradeModalVisible(false);
+      fetchHostData();
       Alert.alert('Success', 'Bet resolved and points distributed.');
-    } catch (error: any) { 
-      Alert.alert('Error', error.message || 'Failed to grade bet.'); 
-    } finally { 
-      setIsGrading(false); 
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to grade bet.');
+    } finally {
+      setIsGrading(false);
     }
   }
   // --- MANAGE CREW LOGIC ---
@@ -582,15 +633,15 @@ export default function HostScreen({ navigation }: any) {
 
     const executeElevate = async () => {
       try {
-        const { error } = await supabase.rpc('update_participant_role', { 
-          p_campaign_id: activeCampaignId, 
-          p_target_user_id: targetUserId, 
-          p_new_role: 'host' 
+        const { error } = await supabase.rpc('update_participant_role', {
+          p_campaign_id: activeCampaignId,
+          p_target_user_id: targetUserId,
+          p_new_role: 'host'
         });
         if (error) throw error;
         fetchHostData();
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
       }
     };
 
@@ -610,15 +661,15 @@ export default function HostScreen({ navigation }: any) {
 
     const executeRevoke = async () => {
       try {
-        const { error } = await supabase.rpc('update_participant_role', { 
-          p_campaign_id: activeCampaignId, 
-          p_target_user_id: targetUserId, 
-          p_new_role: 'guest' 
+        const { error } = await supabase.rpc('update_participant_role', {
+          p_campaign_id: activeCampaignId,
+          p_target_user_id: targetUserId,
+          p_new_role: 'guest'
         });
         if (error) throw error;
         fetchHostData();
-      } catch (error: any) { 
-        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
       }
     };
 
@@ -648,13 +699,13 @@ export default function HostScreen({ navigation }: any) {
 
   async function executeClose() {
     try {
-      const { error } = await supabase.rpc('close_board_and_refund', { 
-        p_campaign_id: activeCampaignId 
+      const { error } = await supabase.rpc('close_board_and_refund', {
+        p_campaign_id: activeCampaignId
       });
       if (error) throw error;
       navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] });
-    } catch (error: any) { 
-      Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message); 
+    } catch (error: any) {
+      Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
     }
   }
 
@@ -668,7 +719,7 @@ export default function HostScreen({ navigation }: any) {
           await AsyncStorage.removeItem('campaignName');
           navigation.reset({ index: 0, routes: [{ name: 'Campaigns' }] });
         } catch (err: any) {
-          window.alert(err.message);
+        window.alert(err.message);
         }
       }
     } else {
@@ -677,432 +728,407 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
-  if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
+  // --- SUB-VIEW RENDERERS ---
 
+  const renderEventsView = () => (
+    <View style={styles.subViewContainer}>
+      <View style={styles.subViewHeader}>
+        <Text style={styles.subViewTitle}>Manage Events</Text>
+        <TouchableOpacity 
+          style={styles.addEventBtnSmall} 
+          onPress={() => { setEditingEvent(null); setEventFormVisible(true); }}
+        >
+          <Text style={styles.addEventBtnTextSmall}>+ New Event</Text>
+        </TouchableOpacity>
+      </View>
+
+      {eventsList.length > 0 ? (
+        eventsList.map(event => (
+          <HostEventController
+            key={event.id}
+            event={event as any}
+            onEventChanged={(silent) => fetchHostData(activeEventId, silent)}
+            onEditRequest={() => { setEditingEvent(event as any); setEventFormVisible(true); }}
+          />
+        ))
+      ) : (
+        <Text style={styles.emptyText}>No events created yet.</Text>
+      )}
+    </View>
+  );
+
+  const renderBetsView = () => {
+    const globalId = getGlobalEventId();
+    // Safety: ensure drillDownEventId is set if we somehow arrived here with null
+    const currentFilterId = drillDownEventId || globalId;
+    const openBets = bets.filter(b => b.status === 'open');
+    
+    return (
+      <View style={styles.subViewContainer}>
+        <View style={styles.subViewHeader}>
+          <Text style={styles.subViewTitle}>Active Bets</Text>
+          <TouchableOpacity 
+            style={styles.addBetBtnSmall} 
+            onPress={() => { setNewQuestion(''); setHostEventScope(drillDownEventId || globalId); setCreateModalVisible(true); }}
+          >
+            <Text style={styles.addBetBtnTextSmall}>+ Push Bet</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.filterLabel}>Filter by Event:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+            <TouchableOpacity
+              style={[styles.scopePill, drillDownEventId === globalId && styles.scopePillActive]}
+              onPress={() => setDrillDownEventId(globalId)}
+            >
+              <Text style={[styles.scopePillText, drillDownEventId === globalId && styles.scopePillTextActive]}>🌐 Global</Text>
+            </TouchableOpacity>
+            {eventsList.map((e: any) => (
+              <TouchableOpacity
+                key={e.id}
+                style={[styles.scopePill, drillDownEventId === e.id && styles.scopePillActive]}
+                onPress={() => setDrillDownEventId(e.id)}
+              >
+                <Text style={[styles.scopePillText, drillDownEventId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {openBets.filter(b => b.event_id === currentFilterId).map(item => (
+          <View key={item.id} style={styles.betCard}>
+            <View style={styles.betCardHeader}>
+              <View>
+                {item.isBlind && <Text style={styles.typeBadgeBlind}>🤝 BLIND MATCH</Text>}
+                {item.isP2P && <Text style={styles.typeBadgeP2P}>🥊 P2P PROP</Text>}
+                <Text style={styles.betQuestion}>{item.question}</Text>
+              </View>
+              <Text style={styles.statusBadgeOpen}>OPEN</Text>
+            </View>
+            <View style={styles.betActionRow}>
+              {!item.isBlind && (
+                <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBetStatus(item.id, 'locked')}>
+                  <Text style={styles.actionBtnText}>🔒 Lock</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleDeleteBet(item.id)}>
+                <Text style={styles.actionBtnTextTrash}>🗑️ Trash</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+  const renderGradingView = () => {
+    const globalId = getGlobalEventId();
+    const currentFilterId = drillDownEventId || globalId;
+    const readyToGrade = bets.filter(b => b.status === 'locked' || b.status === 'matched');
+
+    return (
+      <View style={styles.subViewContainer}>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.filterLabel}>Filter by Event:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+            <TouchableOpacity
+              style={[styles.scopePill, drillDownEventId === globalId && styles.scopePillActive]}
+              onPress={() => setDrillDownEventId(globalId)}
+            >
+              <Text style={[styles.scopePillText, drillDownEventId === globalId && styles.scopePillTextActive]}>🌐 Global</Text>
+            </TouchableOpacity>
+            {eventsList.map((e: any) => (
+              <TouchableOpacity
+                key={e.id}
+                style={[styles.scopePill, drillDownEventId === e.id && styles.scopePillActive]}
+                onPress={() => setDrillDownEventId(e.id)}
+              >
+                <Text style={[styles.scopePillText, drillDownEventId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {readyToGrade.filter(b => b.event_id === currentFilterId).length > 0 ? (
+          readyToGrade.filter(b => b.event_id === currentFilterId).map(item => (
+            <View key={item.id} style={styles.betCard}>
+              <Text style={styles.betQuestion}>{item.question}</Text>
+              <View style={styles.betActionRow}>
+                <TouchableOpacity 
+                  style={styles.actionBtnSecondary} 
+                  onPress={() => item.isBlind ? handleDeleteBet(item.id) : toggleBetStatus(item.id, 'open')}
+                >
+                  <Text style={styles.actionBtnTextSecondary}>{item.isBlind ? '🗑️ Trash' : '🔓 Unlock'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionBtnGrade} onPress={() => openGradeModal(item)}>
+                  <Text style={styles.actionBtnTextGrade}>✅ Grade</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyText}>Nothing ready for grading in this view.</Text>
+        )}
+      </View>
+    );
+  };
+
+  const renderPitchesView = () => {
+    const hasData = proposals.length > 0 || pendingPitches.length > 0 || pendingHouseBets.length > 0 || pendingBlindBets.length > 0;
+
+    return (
+      <View style={styles.subViewContainer}>
+        {!hasData && <Text style={styles.emptyText}>The inbox is currently empty.</Text>}
+
+        {/* Ideas */}
+        {proposals?.length > 0 && (
+          <View style={styles.inboxSection}>
+            <Text style={styles.inboxTitle}>💡 Guest Ideas ({proposals.length})</Text>
+            {proposals.map(prop => (
+              <View key={prop.id} style={styles.ideaCard}>
+                <Text style={styles.pitchText}>"{prop.suggestion}"</Text>
+                <Text style={styles.pitchAuthor}>- {prop.users.display_name}</Text>
+                <View style={styles.pitchActions}>
+                  <TouchableOpacity onPress={() => convertProposalToBet(prop)}><Text style={styles.approveText}>Approve</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => rejectProposal(prop.id)}><Text style={styles.rejectText}>Trash</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Challenges */}
+        {pendingPitches?.length > 0 && (
+          <View style={styles.inboxSection}>
+            <Text style={styles.inboxTitle}>🥊 Pending Challenges ({pendingPitches.length})</Text>
+            {pendingPitches.map(pitch => (
+              <View key={pitch.id} style={styles.pitchCard}>
+                <Text style={styles.pitchProposer}>{pitch.users?.display_name}</Text>
+                <Text style={styles.pitchQuestion}>{pitch.question}</Text>
+                <View style={styles.pitchActionRow}>
+                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectPitch(pitch.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApprovePitch(pitch.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* House Bets */}
+        {pendingHouseBets?.length > 0 && (
+          <View style={styles.inboxSection}>
+            <Text style={styles.inboxTitle}>🏠 Pending House ({pendingHouseBets.length})</Text>
+            {pendingHouseBets.map(bet => (
+              <View key={bet.id} style={styles.pitchCard}>
+                <Text style={styles.pitchProposer}>{bet.users?.display_name}</Text>
+                <Text style={styles.pitchQuestion}>{bet.question}</Text>
+                <View style={styles.pitchActionRow}>
+                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectHouseBet(bet.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApproveHouseBet(bet.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Blind */}
+        {pendingBlindBets?.length > 0 && (
+          <View style={styles.inboxSection}>
+            <Text style={styles.inboxTitle}>🤝 Pending Blind ({pendingBlindBets.length})</Text>
+            {pendingBlindBets.map(blind => (
+              <View key={blind.id} style={styles.pitchCard}>
+                <Text style={styles.pitchProposer}>{blind.users?.display_name || 'Guest'}</Text>
+                <Text style={styles.pitchQuestion}>{blind.question}</Text>
+                <View style={styles.pitchActionRow}>
+                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectBlindBet(blind.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApproveBlindBet(blind.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const renderParticipantsView = () => (
+    <View style={styles.subViewContainer}>
+      <View style={styles.crewContainer}>
+        {participants.map(p => (
+          <TouchableOpacity
+            key={p.user_id}
+            style={styles.crewCard}
+            onPress={() => { setSelectedParticipant(p); setViewingPlayerLedger(false); setPlayerActionSheetVisible(true); }}
+          >
+            <View>
+              <Text style={styles.crewName}>{p.users.display_name}</Text>
+              <Text style={p.role === 'host' ? styles.crewRoleHost : styles.crewRoleGuest}>
+                {p.role.toUpperCase()}
+              </Text>
+            </View>
+            <Text style={{ color: '#555', fontSize: 18 }}>›</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderCampaignView = () => (
+    <View style={styles.subViewContainer}>
+      <View style={styles.settingsGroup}>
+        <Text style={styles.label}>Campaign Join Code</Text>
+        <View style={styles.codeRow}>
+          <Text style={styles.joinCodeText}>{campaignJoinCode}</Text>
+        </View>
+        <Text style={styles.joinCodeSub}>Players enter this to join your event.</Text>
+      </View>
+
+        <TouchableOpacity style={styles.closeBoardBtn} onPress={handleCloseBoard}>
+          <Text style={styles.closeBoardBtnText}>🛑 Close Board & End Event</Text>
+          <Text style={styles.closeBoardBtnSub}>Refunds all ungraded bets and locks results.</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.deleteCampaignBtn} onPress={handleDeleteCampaign}>
+          <Text style={styles.deleteCampaignBtnText}>🗑️ Delete Campaign Forever</Text>
+          <Text style={styles.deleteCampaignBtnSub}>Permanent erase. NO UNDO.</Text>
+        </TouchableOpacity>
+      </View>
+    );
+
+  // --- DASHBOARD RENDERERS ---
+  const renderDashboard = () => {
+    const tiles = [
+      { id: 'events', title: 'Manage Events', icon: '📅', color: '#00D084', desc: 'Timing & Status' },
+      { id: 'bets', title: 'Manage Bets', icon: '🎲', color: '#FFD700', desc: 'Lock & Publish' },
+      { id: 'grading', title: 'Manage Grading', icon: '✅', color: '#BB86FC', desc: 'Settle Outcomes' },
+      { id: 'pitches', title: 'Manage Pitches', icon: '📥', color: '#03DAC6', desc: 'Guest Ideas' },
+      { id: 'participants', title: 'Manage Participants', icon: '👥', color: '#CF6679', desc: 'Roles & Ledger' },
+      { id: 'campaign', title: 'Manage Campaign', icon: '⚙️', color: '#a0a0a0', desc: 'Settings & Nuke' },
+    ];
+
+    return (
+      <ScrollView contentContainerStyle={styles.dashboardGrid}>
+        {tiles.map(tile => (
+          <TouchableOpacity 
+            key={tile.id} 
+            style={styles.tile} 
+            onPress={() => setActiveView(tile.id as any)}
+          >
+            <View style={[styles.tileIconContainer, { backgroundColor: tile.color + '20' }]}>
+              <Text style={styles.tileIcon}>{tile.icon}</Text>
+            </View>
+            <Text style={styles.tileTitle}>{tile.title}</Text>
+            <Text style={styles.tileDesc}>{tile.desc}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    );
+  };
+
+  // --- SHARED MODAL COMPONENTS ---
+  const PlayerActionSheet = () => (
+    <Modal visible={playerActionSheetVisible} transparent animationType="slide" onRequestClose={() => setPlayerActionSheetVisible(false)}>
+      <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => !viewingPlayerLedger && setPlayerActionSheetVisible(false)}>
+        <View style={{ backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: viewingPlayerLedger ? '80%' : 'auto' }}>
+          {!viewingPlayerLedger ? (
+            <>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text>
+                <Text style={{ color: '#a0a0a0', fontSize: 13 }}>{selectedParticipant?.role?.toUpperCase()}</Text>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                onPress={() => setViewingPlayerLedger(true)}
+              >
+                <Text style={{ fontSize: 20 }}>📜</Text>
+                <View>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>View Ledger</Text>
+                  <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Full transaction history</Text>
+                </View>
+              </TouchableOpacity>
+              {selectedParticipant?.role === 'guest' && (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  onPress={() => { setPlayerActionSheetVisible(false); handleElevateHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
+                >
+                  <Text style={{ fontSize: 20 }}>👑</Text>
+                  <View>
+                    <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 15 }}>Make Co-Host</Text>
+                    <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Grant host permissions</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              {selectedParticipant?.role === 'host' && selectedParticipant?.user_id !== currentUserId && (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#ff4444', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                  onPress={() => { setPlayerActionSheetVisible(false); handleRevokeHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
+                >
+                  <Text style={{ fontSize: 20 }}>🚫</Text>
+                  <View>
+                    <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 15 }}>Revoke Host</Text>
+                    <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Remove host permissions</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => setPlayerActionSheetVisible(false)} style={{ marginTop: 6, padding: 14, alignItems: 'center' }}>
+                <Text style={{ color: '#666', fontSize: 15 }}>Cancel</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                <TouchableOpacity onPress={() => setViewingPlayerLedger(false)} style={{ marginRight: 12 }}>
+                  <Text style={{ color: '#00D084', fontSize: 16 }}>← Back</Text>
+                </TouchableOpacity>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}'s Ledger</Text>
+              </View>
+              <LedgerTab
+                userId={selectedParticipant?.user_id}
+                campaignId={activeCampaignId}
+                displayName={selectedParticipant?.users?.display_name}
+              />
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#FFD700" /></View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
       >
-        <ScrollView 
-          style={{ flex: 1 }} 
-          contentContainerStyle={{ flexGrow: 1 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[styles.container, { paddingBottom: 0 }]}>
-      <View style={styles.headerRow}>
-        <View>
-          {eventsList.length > 0 && (
-            <EventSwitcher 
-              events={eventsList} 
-              activeEventId={activeEventSwitchId} 
-              onSelectEvent={(id) => { setActiveEventSwitchId(id); fetchHostData(id); }} 
-            />
-          )}
-        </View>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity style={[styles.createButton, { backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#00D084' }]} onPress={() => { setEditingEvent(null); setEventFormVisible(true); }}>
-            <Text style={[styles.createButtonText, { color: '#00D084', fontSize: 13, alignSelf: 'center' }]}>+ Event</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.createButton} onPress={() => { setNewQuestion(''); setHostEventScope(activeEventSwitchId); setCreateModalVisible(true); }}>
-            <Text style={styles.createButtonText}>+ New Bet</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {activeView === 'dashboard' ? renderDashboard() : (
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ flexGrow: 1 }}
+            keyboardShouldPersistTaps="handled"
+          >
+             {activeView === 'events' && renderEventsView()}
+             {activeView === 'bets' && renderBetsView()}
+             {activeView === 'grading' && renderGradingView()}
+             {activeView === 'pitches' && renderPitchesView()}
+             {activeView === 'participants' && renderParticipantsView()}
+             {activeView === 'campaign' && renderCampaignView()}
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
 
-      {(() => {
-        const currentEvent = eventsList.find(e => e.id === activeEventId);
-        if (currentEvent) {
-          return (
-            <HostEventController 
-              event={currentEvent as any} 
-              onEventChanged={fetchHostData} 
-              onEditRequest={() => { setEditingEvent(currentEvent as any); setEventFormVisible(true); }}
-            />
-          );
-        }
-        return null;
-      })()}
-
-      <FlatList
-        scrollEnabled={false}
-        data={bets}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 50 }}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View>
-            {/* --- INBOX 1: IDEAS --- */}
-            {proposals?.length > 0 && (
-              <View style={styles.inboxContainer}>
-                <Text style={styles.inboxTitle}>💡 Guest Ideas ({proposals.length})</Text>
-                {proposals?.map(prop => (
-                  <View key={prop.id} style={styles.ideaCard}>
-                    <Text style={styles.pitchText}>"{prop.suggestion}"</Text>
-                    <Text style={styles.pitchAuthor}>- {prop.users.display_name}</Text>
-                    <View style={styles.pitchActions}>
-                      <TouchableOpacity onPress={() => convertProposalToBet(prop)}><Text style={styles.approveText}>Approve & Setup</Text></TouchableOpacity>
-                      <TouchableOpacity onPress={() => rejectProposal(prop.id)}><Text style={styles.rejectText}>Trash</Text></TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* --- INBOX 2: P2P CHALLENGES --- */}
-            {pendingPitches?.length > 0 && (
-              <View style={styles.queueContainer}>
-                <Text style={styles.inboxTitle}>🥊 Pending Challenges ({pendingPitches.length})</Text>
-                {pendingPitches?.map((pitch) => (
-                  <View key={pitch.id} style={styles.pitchCard}>
-                    <Text style={styles.pitchProposer}>Proposed by: {pitch.users?.display_name || 'Guest'}</Text>
-                    <Text style={styles.pitchQuestion}>{pitch.question}</Text>
-                    
-                    <View style={styles.pitchMathBox}>
-                      <Text style={styles.pitchMathText}>Side A (<Text style={{color: '#fff'}}>{pitch.option_a_label}</Text>): Risks {pitch.wager_amount} pts @ {pitch.multiplier}x</Text>
-                      <Text style={styles.pitchMathText}>Side B (<Text style={{color: '#fff'}}>{pitch.option_b_label}</Text>): Must Risk {pitch.challenger_cost} pts</Text>
-                      <Text style={styles.pitchPotText}>Total Pot: {pitch.total_pot} pts</Text>
-                    </View>
-
-                    <View style={styles.pitchActionRow}>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderColor: '#ff4444' }]} onPress={() => handleRejectPitch(pitch.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#ff4444' }]}>Trash</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderColor: '#00D084' }]} onPress={() => handleApprovePitch(pitch.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#00D084' }]}>Approve to Board</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-            {/* --- INBOX 3: HOUSE BETS (PROPS & O/U) --- */}
-            {pendingHouseBets?.length > 0 && (
-              <View style={styles.queueContainer}>
-                <Text style={styles.inboxTitle}>🏠 Pending House Bets ({pendingHouseBets.length})</Text>
-                {pendingHouseBets?.map((bet) => (
-                  <View key={bet.id} style={styles.pitchCard}>
-                    {/* 🚨 Swap the hardcoded text for the dynamic user name! */}
-                    <Text style={styles.pitchProposer}>Proposed by: {bet.users?.display_name || 'Guest'}</Text>
-                    <Text style={styles.pitchQuestion}>{bet.question}</Text>
-                    
-                    <View style={styles.pitchMathBox}>
-                      <Text style={styles.pitchMathText}>Type: <Text style={{color: '#fff', fontWeight: 'bold'}}>{bet.type === 'over_under' ? 'Over/Under' : 'Prop Bet'}</Text></Text>
-                      {bet.bet_options?.map((opt: any) => (
-                        <Text key={opt.id} style={styles.pitchMathText}>• {opt.label} @ {opt.multiplier}x</Text>
-                      ))}
-                    </View>
-
-                    <View style={styles.pitchActionRow}>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderColor: '#ff4444' }]} onPress={() => handleRejectHouseBet(bet.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#ff4444' }]}>Trash</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderColor: '#00D084' }]} onPress={() => handleApproveHouseBet(bet.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#00D084' }]}>Approve to Board</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* --- INBOX 4: BLIND MATCHUPS --- */}
-            {pendingBlindBets?.length > 0 && (
-              <View style={styles.queueContainer}>
-                <Text style={styles.inboxTitle}>🤝 Pending Blind Matchups ({pendingBlindBets.length})</Text>
-                {pendingBlindBets?.map((blind) => (
-                  <View key={blind.id} style={styles.pitchCard}>
-                    <Text style={styles.pitchProposer}>Proposed by: {blind.users?.display_name || 'Guest'}</Text>
-                    <Text style={styles.pitchQuestion}>{blind.question}</Text>
-                    
-                    <View style={styles.pitchMathBox}>
-                      <Text style={styles.pitchMathText}>Side A: <Text style={{color: '#fff'}}>{blind.side_a_label}</Text></Text>
-                      <Text style={styles.pitchMathText}>Side B: <Text style={{color: '#fff'}}>{blind.side_b_label}</Text></Text>
-                      <Text style={styles.pitchPotText}>Base Unit: {blind.base_amount} pts | Bid: {blind.user_1_bid_multiplier}x</Text>
-                    </View>
-
-                    <View style={styles.pitchActionRow}>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(255, 68, 68, 0.2)', borderColor: '#ff4444' }]} onPress={() => handleRejectBlindBet(blind.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#ff4444' }]}>Trash</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pitchBtn, { backgroundColor: 'rgba(0, 208, 132, 0.2)', borderColor: '#00D084' }]} onPress={() => handleApproveBlindBet(blind.id)}>
-                        <Text style={[styles.pitchBtnText, { color: '#00D084' }]}>Approve to Board</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-            
-            <Text style={styles.sectionHeader}>Active Action (Needs Grading)</Text>
-          </View>
-        }
-        ListEmptyComponent={<Text style={styles.emptyText}>No open bets right now.</Text>}
-        renderItem={({ item, index }: { item: any; index: number }) => {
-          const isFirstCampaignStake = item.event_id === null && bets.findIndex((b:any) => b.event_id === null) === index;
-          const isFirstEventStake = item.event_id !== null && bets.findIndex((b:any) => b.event_id !== null) === index;
-
-          return (
-            <View>
-              {isFirstCampaignStake && <Text style={[styles.sectionHeader, { color: '#FFD700', marginTop: 10, marginBottom: 15 }]}>🏆 Campaign Stakes (Overall)</Text>}
-              <View style={[styles.betCard, item.status === 'graded' && { opacity: 0.6, borderColor: '#666' }]}>
-            
-            {/* Header & Status */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                {item.isBlind && <Text style={{ color: '#BB86FC', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🤝 BLIND MATCH</Text>}
-                {item.isP2P && <Text style={{ color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>🥊 P2P PROP</Text>}
-                <Text style={styles.betQuestion}>{item.question}</Text>
-              </View>
-              <Text style={{ 
-                color: item.status === 'open' ? '#00D084' : (item.status === 'locked' || item.status === 'matched') ? '#FFD700' : '#ff4444', 
-                fontWeight: 'bold', fontSize: 12 
-              }}>
-                {item.status.toUpperCase()}
-              </Text>
-            </View>
-            
-            {/* Buttons */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-              
-              {item.status === 'open' && !item.isBlind && (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBetStatus(item.id, 'locked')}>
-                  <Text style={styles.actionBtnText}>🔒 Lock Betting</Text>
-                </TouchableOpacity>
-              )}
-
-              {(item.status === 'locked' || item.status === 'matched') && (
-                <>
-                  {!item.isBlind && (
-                    <TouchableOpacity style={styles.actionBtnSecondary} onPress={() => toggleBetStatus(item.id, 'open')}>
-                      <Text style={styles.actionBtnTextSecondary}>🔓 Re-Open</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => openGradeModal(item)}>
-                    <Text style={styles.actionBtnText}>✅ Grade</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-
-              {item.status === 'graded' && !item.isBlind && (
-                <TouchableOpacity style={styles.actionBtnDanger} onPress={() => handleReverseGrading(item.id)}>
-                  <Text style={styles.actionBtnTextDanger}>↩️ Reverse</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity 
-                style={[styles.actionBtnSecondary, { borderColor: '#ff4444' }]} 
-                onPress={() => handleDeleteBet(item.id)}
-              >
-                <Text style={[styles.actionBtnTextSecondary, { color: '#ff4444' }]}>🗑️ Trash</Text>
-              </TouchableOpacity>
-
-            </View>
-          </View>
-          </View>
-          );
-        }}
-        ListFooterComponent={
-          <View style={{ paddingTop: 20 }}>
-            {/* --- MANAGE CREW SECTION --- */}
-            <Text style={styles.sectionHeader}>Manage Crew</Text>
-            <View style={styles.crewContainer}>
-              {participants.map(p => (
-                <TouchableOpacity
-                  key={p.user_id}
-                  style={styles.crewCard}
-                  onPress={() => { setSelectedParticipant(p); setViewingPlayerLedger(false); setPlayerActionSheetVisible(true); }}
-                >
-                  <View>
-                    <Text style={styles.crewName}>{p.users.display_name}</Text>
-                    <Text style={p.role === 'host' ? styles.crewRoleHost : styles.crewRoleGuest}>
-                      {p.role.toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text style={{ color: '#555', fontSize: 18 }}>›</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* --- THE NUKE BUTTON --- */}
-            <TouchableOpacity 
-              style={{ backgroundColor: 'rgba(255, 68, 68, 0.1)', padding: 18, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#ff4444', marginTop: 10 }}
-              onPress={handleCloseBoard}
-            >
-              <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 16 }}>🛑 Close Board & End Event</Text>
-            </TouchableOpacity>
-
-            {/* --- DELETE CAMPAIGN BUTTON --- */}
-            <TouchableOpacity
-              style={{ backgroundColor: 'transparent', padding: 18, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#7f1d1d', marginTop: 10, marginBottom: 30 }}
-              onPress={handleDeleteCampaign}
-            >
-              <Text style={{ color: '#991b1b', fontWeight: 'bold', fontSize: 16 }}>🗑️ Delete Campaign Forever</Text>
-              <Text style={{ color: '#7f1d1d', fontSize: 11, marginTop: 4 }}>Permanently erases all data. Cannot be undone.</Text>
-            </TouchableOpacity>
-          </View>
-        }
+      {/* Shared Modals */}
+      <PlayerActionSheet />
+      <EventFormModal
+        visible={eventFormVisible}
+        existingEvent={editingEvent}
+        campaignId={activeCampaignId}
+        onClose={() => setEventFormVisible(false)}
+        onSaveComplete={() => setEventFormVisible(false)}
       />
-
-      {/* --- DELETE CAMPAIGN CONFIRMATION MODAL --- */}
-      <Modal
-        visible={deleteCampaignModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setDeleteCampaignModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={() => setDeleteCampaignModalVisible(false)}
-        >
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <TouchableOpacity activeOpacity={1}>
-              <View style={{ backgroundColor: '#1a0808', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, borderTopWidth: 1, borderColor: '#7f1d1d' }}>
-                <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>⚠️ Delete Campaign</Text>
-                <Text style={{ color: '#a0a0a0', fontSize: 14, lineHeight: 20, marginBottom: 20 }}>
-                  This will permanently delete <Text style={{ color: '#fff', fontWeight: 'bold' }}>all bets, events, participants, and ledger history</Text> for this campaign. This action{' '}
-                  <Text style={{ color: '#ff4444', fontWeight: 'bold' }}>cannot be undone</Text>.
-                </Text>
-
-                <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 8 }}>
-                  Type the campaign name to confirm:
-                </Text>
-                <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 15, marginBottom: 10 }}>"{activeCampaignName}"</Text>
-
-                <TextInput
-                  style={{
-                    backgroundColor: '#121212',
-                    borderWidth: 1,
-                    borderColor: confirmCampaignName === activeCampaignName ? '#ff4444' : '#444',
-                    borderRadius: 8,
-                    color: '#fff',
-                    padding: 12,
-                    fontSize: 15,
-                    marginBottom: 20,
-                  }}
-                  placeholder={activeCampaignName}
-                  placeholderTextColor="#555"
-                  value={confirmCampaignName}
-                  onChangeText={setConfirmCampaignName}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-
-                <TouchableOpacity
-                  style={[
-                    { padding: 16, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
-                    confirmCampaignName === activeCampaignName
-                      ? { backgroundColor: 'rgba(153, 27, 27, 0.4)', borderColor: '#ff4444' }
-                      : { backgroundColor: '#1e1e1e', borderColor: '#333' }
-                  ]}
-                  disabled={confirmCampaignName !== activeCampaignName}
-                  onPress={async () => {
-                    try {
-                      const { error } = await supabase.rpc('delete_campaign', { p_campaign_id: activeCampaignId });
-                      if (error) throw error;
-                      await AsyncStorage.removeItem('campaignId');
-                      await AsyncStorage.removeItem('campaignName');
-                      setDeleteCampaignModalVisible(false);
-                      setConfirmCampaignName('');
-                      navigation.reset({ index: 0, routes: [{ name: 'Campaigns' }] });
-                    } catch (err: any) {
-                      Alert.alert('Delete Failed', err.message);
-                    }
-                  }}
-                >
-                  <Text style={[
-                    { fontWeight: 'bold', fontSize: 16 },
-                    confirmCampaignName === activeCampaignName ? { color: '#ff4444' } : { color: '#444' }
-                  ]}>
-                    {confirmCampaignName === activeCampaignName ? '🗑️ DELETE FOREVER' : 'Type name above to unlock'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => { setDeleteCampaignModalVisible(false); setConfirmCampaignName(''); }}
-                  style={{ marginTop: 14, padding: 12, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#666', fontSize: 15 }}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </KeyboardAvoidingView>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* --- PLAYER ACTION SHEET --- */}
-
-      <Modal visible={playerActionSheetVisible} transparent animationType="slide" onRequestClose={() => setPlayerActionSheetVisible(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => !viewingPlayerLedger && setPlayerActionSheetVisible(false)}>
-          <View style={{ backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: viewingPlayerLedger ? '80%' : 'auto' }}>
-            {!viewingPlayerLedger ? (
-              <>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text>
-                  <Text style={{ color: '#a0a0a0', fontSize: 13 }}>{selectedParticipant?.role?.toUpperCase()}</Text>
-                </View>
-                <TouchableOpacity
-                  style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                  onPress={() => setViewingPlayerLedger(true)}
-                >
-                  <Text style={{ fontSize: 20 }}>📒</Text>
-                  <View>
-                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>View Ledger</Text>
-                    <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Full transaction history</Text>
-                  </View>
-                </TouchableOpacity>
-                {selectedParticipant?.role === 'guest' && (
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                    onPress={() => { setPlayerActionSheetVisible(false); handleElevateHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
-                  >
-                    <Text style={{ fontSize: 20 }}>👑</Text>
-                    <View>
-                      <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 15 }}>Make Co-Host</Text>
-                      <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Grant host permissions</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                {selectedParticipant?.role === 'host' && selectedParticipant?.user_id !== currentUserId && (
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#ff4444', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
-                    onPress={() => { setPlayerActionSheetVisible(false); handleRevokeHost(selectedParticipant.user_id, selectedParticipant.users.display_name); }}
-                  >
-                    <Text style={{ fontSize: 20 }}>🚫</Text>
-                    <View>
-                      <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 15 }}>Revoke Host</Text>
-                      <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Remove host permissions</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={() => setPlayerActionSheetVisible(false)} style={{ marginTop: 6, padding: 14, alignItems: 'center' }}>
-                  <Text style={{ color: '#666', fontSize: 15 }}>Cancel</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                  <TouchableOpacity onPress={() => setViewingPlayerLedger(false)} style={{ marginRight: 12 }}>
-                    <Text style={{ color: '#00D084', fontSize: 16 }}>← Back</Text>
-                  </TouchableOpacity>
-                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}'s Ledger</Text>
-                </View>
-                <LedgerTab
-                  userId={selectedParticipant?.user_id}
-                  campaignId={activeCampaignId}
-                  displayName={selectedParticipant?.users?.display_name}
-                />
-              </>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* --- CREATE BET MODAL --- */}
+      
       <Modal visible={createModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1110,15 +1136,14 @@ export default function HostScreen({ navigation }: any) {
               <Text style={styles.modalTitle}>Push Live Bet</Text>
               <TouchableOpacity onPress={() => setCreateModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
             </View>
-
             <View style={{ marginBottom: 15 }}>
               <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
                 <TouchableOpacity
-                  style={[styles.scopePill, hostEventScope === null && styles.scopePillActive]}
-                  onPress={() => setHostEventScope(null)}
+                  style={[styles.scopePill, hostEventScope === getGlobalEventId() && styles.scopePillActive]}
+                  onPress={() => setHostEventScope(getGlobalEventId())}
                 >
-                  <Text style={[styles.scopePillText, hostEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
+                  <Text style={[styles.scopePillText, hostEventScope === getGlobalEventId() && styles.scopePillTextActive]}>🌐 Global</Text>
                 </TouchableOpacity>
                 {eventsList.map((e: any) => (
                   <TouchableOpacity
@@ -1131,7 +1156,6 @@ export default function HostScreen({ navigation }: any) {
                 ))}
               </ScrollView>
             </View>
-
             <View style={styles.typeSelectorRow}>
               <TouchableOpacity style={[styles.typeBtn, betType === 'prop' && styles.typeBtnActive]} onPress={() => handleToggleBetType('prop')}>
                 <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
@@ -1146,272 +1170,75 @@ export default function HostScreen({ navigation }: any) {
                 <Text style={[styles.typeBtnText, betType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
               </TouchableOpacity>
             </View>
-            
             <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
               {betType === 'blind' ? (
-                // --- BLIND MATCH UI ---
                 <>
                   <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
                   <TextInput style={styles.input} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
                     <View style={{ flex: 1 }}><Text style={styles.label}>Team A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
                     <View style={{ flex: 1 }}><Text style={styles.label}>Team B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
                   </View>
-
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
-                      <TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput
-                        style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
-                        keyboardType="decimal-pad"
-                        value={blindMultiplier}
-                        onChangeText={updateMultiplier}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <TextInput
-                        style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
-                        keyboardType="number-pad"
-                        value={blindPercent}
-                        onChangeText={updatePercent}
-                      />
-                    </View>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text><TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" /></View>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={updateMultiplier}/></View>
+                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={blindPercent} onChangeText={updatePercent}/></View>
                   </View>
-                  
-
-                  {(() => {
-                    const base = parseFloat(blindBase) || 0;
-                    const multi = parseFloat(blindMultiplier) || 0;
-                    const riskA = Math.trunc(base);
-                    const riskB = Math.trunc((base * multi) - base);
-                    const maxRisk = Math.max(riskA, riskB);
-                    
-                    const currentBalance = walletBalance || 0;
-                    const isOverleveraged = maxRisk > currentBalance;
-                    const pot = Math.trunc(base * multi);
-
-                    return (
-                      <View style={[styles.mathBox, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: isOverleveraged ? 'rgba(255, 68, 68, 0.05)' : 'rgba(187, 134, 252, 0.05)' }]}>
-                        <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
-                          {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'How Your Bid Shapes the Market'}
-                        </Text>
-                        
-                        <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
-                          You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{blindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
-                        </Text>
-
-                        {/* --- SCENARIO A: HOST GETS THE FAVORITE --- */}
-                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
-                          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario A: You secure {p2pOptionA || 'Team A'}</Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • You Risk: <Text style={{color: (isOverleveraged && riskA > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
-                        </View>
-
-                        {/* --- SCENARIO B: HOST GETS THE UNDERDOG --- */}
-                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
-                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario B: You are pushed to {p2pOptionB || 'Team B'}</Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • You Risk: <Text style={{color: (isOverleveraged && riskB > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
-                        </View>
-
-                        {isOverleveraged ? (
-                          <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
-                            You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
-                          </Text>
-                        ) : (
-                          <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
-                            *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  })()}
                 </>
               ) : betType === 'p2p' ? (
-                // --- P2P CHALLENGE UI ---
                 <>
                   <Text style={styles.label}>The Scenario</Text>
                   <TextInput style={styles.input} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
                     <View style={{ flex: 1 }}><Text style={styles.label}>Option A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
                     <View style={{ flex: 1 }}><Text style={styles.label}>Option B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="No" placeholderTextColor="#666" /></View>
                   </View>
-
                   <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>Risk</Text>
-                      <TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>Odds (x)</Text>
-                      <TextInput style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.label}>Win (%)</Text>
-                      <TextInput style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} />
-                    </View>
-                  </View>
-                  <View style={styles.mathBox}>
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
-                      Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(p2pWager) || 0)} pts</Text>
-                    </Text>
-                    
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
-                      Side B Must Risk: <Text style={{color: '#fff'}}>{Math.max(0, Math.trunc(((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0)) - (parseFloat(p2pWager) || 0)))} pts</Text>
-                    </Text>
-                    
-                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
-                      Total Pot: {Math.trunc((parseFloat(p2pWager) || 0) * (parseFloat(p2pMultiplier) || 0))} pts
-                    </Text>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Risk</Text><TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.label}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} /></View>
                   </View>
                 </>
               ) : (
-                // --- STANDARD HOUSE BET UI ---
-                // --- STANDARD HOUSE BET UI ---
                 <>
                   <Text style={styles.label}>The Question</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} 
-                    placeholderTextColor="#666" 
-                    value={newQuestion} 
-                    onChangeText={setNewQuestion} 
-                  />
-
+                  <TextInput style={styles.input} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
                   <Text style={styles.label}>Options & Payouts</Text>
                   {newOptions.map((opt) => (
                     <View key={opt.id} style={styles.optionRow}>
-                      <TextInput
-                        style={[
-                          styles.input,
-                          { flex: 1, minWidth: 0, marginRight: 8, marginBottom: 0, paddingHorizontal: 10, fontSize: 14 },
-                          betType === 'over_under' && { color: '#888', backgroundColor: '#2a2a2a', borderColor: '#222' }
-                        ]}
-                        placeholder="e.g., William"
-                        placeholderTextColor="#666"
-                        value={opt.label}
-                        onChangeText={(text) => updateOption(opt.id, 'label', text)}
-                        editable={betType !== 'over_under'}
-                        selectTextOnFocus={betType !== 'over_under'}
-                      />
-                      <TextInput
-                        style={[styles.input, { flex: 0.4, minWidth: 0, marginBottom: 0, paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
-                        keyboardType="decimal-pad"
-                        placeholder="2.0"
-                        placeholderTextColor="#666"
-                        value={opt.odds}
-                        onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))}
-                      />
+                      <TextInput style={[styles.input, { flex: 3, marginRight: 8, marginBottom: 0 }]} value={opt.label} onChangeText={(text) => updateOption(opt.id, 'label', text)} editable={betType !== 'over_under'} />
+                      <TextInput style={[styles.input, { flex: 2, marginBottom: 0 }]} keyboardType="decimal-pad" value={opt.odds} onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))} />
                     </View>
                   ))}
-
-                  {betType === 'prop' && (
-                    <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}>
-                      <Text style={styles.addOptionText}>+ Add Another Option</Text>
-                    </TouchableOpacity>
-                  )}
+                  {betType === 'prop' && <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}><Text style={styles.addOptionText}>+ Add Another Option</Text></TouchableOpacity>}
                 </>
               )}
             </ScrollView>
-
-            {(() => {
-              let isOverleveraged = false;
-              const currentBalance = walletBalance || 0;
-
-              if (betType === 'p2p') {
-                isOverleveraged = Math.trunc(parseFloat(p2pWager) || 0) > currentBalance;
-              } else if (betType === 'blind') {
-                const base = parseFloat(blindBase) || 0;
-                const multi = parseFloat(blindMultiplier) || 0;
-                isOverleveraged = Math.max(Math.trunc(base), Math.trunc((base * multi) - base)) > currentBalance;
-              }
-
-              return (
-                <TouchableOpacity 
-                  style={[styles.submitBtn, (isCreating || isOverleveraged) && { opacity: 0.5, backgroundColor: '#444' }]} 
-                  onPress={handlePublishBet} 
-                  disabled={isCreating || isOverleveraged}
-                >
-                  <Text style={styles.submitBtnText}>{isCreating ? 'Creating...' : 'Create Bet'}</Text>
-                </TouchableOpacity>
-              );
-            })()}
+            <TouchableOpacity style={styles.submitBtn} onPress={handlePublishBet} disabled={isCreating}><Text style={styles.submitBtnText}>{isCreating ? 'Creating...' : 'Create Bet'}</Text></TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Grade Modal */}
       <Modal visible={gradeModalVisible} transparent={true} animationType="fade" statusBarTranslucent={true}>
         <View style={styles.modalOverlayCenter}>
           <View style={styles.gradeModalContent}>
             <Text style={styles.modalTitle}>Who Won?</Text>
             <Text style={styles.modalSubtitle}>{selectedBet?.question}</Text>
-            
-            {selectedBet?.isP2P || selectedBet?.isBlind ? (
-              // --- P2P & BLIND WINNER BUTTONS ---
+            {selectedBet?.bet_options?.map((option: any) => (
+              <TouchableOpacity key={option.id} style={styles.winnerButton} onPress={() => handleGradeBet(option.id)} disabled={isGrading}>
+                <Text style={styles.winnerButtonText}>{isGrading ? 'Processing...' : `Winner: ${option.label}`}</Text>
+              </TouchableOpacity>
+            ))}
+            {selectedBet?.isP2P && (
               <>
-                <TouchableOpacity 
-                  style={styles.winnerButton} 
-                  onPress={() => handleGradeBet('A')} 
-                  disabled={isGrading || (selectedBet.isP2P && !selectedBet.side_a_user_id) || (selectedBet.isBlind && !selectedBet.user_2_id)}
-                >
-                  <Text style={styles.winnerButtonText}>
-                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.isBlind ? selectedBet.side_a_label : selectedBet.option_a_label}`}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={styles.winnerButton} 
-                  onPress={() => handleGradeBet('B')} 
-                  disabled={isGrading || (selectedBet.isP2P && !selectedBet.side_b_user_id) || (selectedBet.isBlind && !selectedBet.user_2_id)}
-                >
-                  <Text style={styles.winnerButtonText}>
-                    {isGrading ? 'Processing...' : `Winner: ${selectedBet.isBlind ? selectedBet.side_b_label : selectedBet.option_b_label}`}
-                  </Text>
-                </TouchableOpacity>
+                 <TouchableOpacity style={styles.winnerButton} onPress={() => handleGradeBet('A')}><Text style={styles.winnerButtonText}>Winner: {selectedBet.option_a_label}</Text></TouchableOpacity>
+                 <TouchableOpacity style={styles.winnerButton} onPress={() => handleGradeBet('B')}><Text style={styles.winnerButtonText}>Winner: {selectedBet.option_b_label}</Text></TouchableOpacity>
               </>
-            ) : (
-              // --- STANDARD BET WINNER BUTTONS ---
-              selectedBet?.bet_options?.map((option: any) => (
-                <TouchableOpacity key={option.id} style={styles.winnerButton} onPress={() => handleGradeBet(option.id)} disabled={isGrading}>
-                  <Text style={styles.winnerButtonText}>{isGrading ? 'Processing...' : `Winner: ${option.label}`}</Text>
-                </TouchableOpacity>
-              ))
             )}
-            
-            <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setGradeModalVisible(false)}>
-              <Text style={styles.closeText}>Cancel</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setGradeModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
-      <EventFormModal 
-        visible={eventFormVisible} 
-        existingEvent={editingEvent} 
-        campaignId={activeCampaignId} 
-        onClose={() => setEventFormVisible(false)} 
-        onSaveComplete={() => setEventFormVisible(false)} 
-      />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -1427,7 +1254,7 @@ const styles = StyleSheet.create({
   emptyText: { color: '#666', textAlign: 'center', marginTop: 20, marginBottom: 20 },
   betCard: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   betQuestion: { fontSize: 18, color: '#fff', fontWeight: 'bold', marginBottom: 10 },
-  
+
   // DUAL INBOX STYLES
   inboxContainer: { marginBottom: 15, backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#00D084' },
   queueContainer: { marginBottom: 25, backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#FFD700' },
@@ -1460,15 +1287,15 @@ const styles = StyleSheet.create({
   typeBtnTextActive: { color: '#000' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
   modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
-  modalContent: { 
-    backgroundColor: '#1e1e1e', 
-    padding: 25, 
-    width: '100%', 
-    
+  modalContent: {
+    backgroundColor: '#1e1e1e',
+    padding: 25,
+    width: '100%',
+
     // Round the top corners
-    borderTopLeftRadius: 25, 
+    borderTopLeftRadius: 25,
     borderTopRightRadius: 25,
-    
+
     // Keep the bottom padding so buttons aren't blocked by the home bar
     paddingBottom: Platform.OS === 'ios' ? 40 : Platform.OS === 'android' ? 35 : 25,
   },
@@ -1478,7 +1305,7 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: '#a0a0a0', textAlign: 'center', marginBottom: 25, fontSize: 16 },
   closeText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   label: { color: '#fff', fontWeight: 'bold', marginBottom: 10, marginTop: 10 },
-  input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15, minWidth: 0 },
+  input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15 },
   optionRow: { flexDirection: 'row', marginBottom: 10 },
   addOptionBtn: { alignItems: 'center', paddingVertical: 10, marginBottom: 20 },
   addOptionText: { color: '#00D084', fontWeight: 'bold' },
@@ -1486,7 +1313,7 @@ const styles = StyleSheet.create({
   submitBtnText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
   winnerButton: { backgroundColor: '#00D084', padding: 15, borderRadius: 8, marginBottom: 15, alignItems: 'center' },
   winnerButtonText: { color: '#000', fontWeight: 'bold', fontSize: 18 },
-  
+
   // CREW STYLES
   crewContainer: { backgroundColor: '#1e1e1e', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 40 },
   crewCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#2a2a2a' },
@@ -1497,11 +1324,55 @@ const styles = StyleSheet.create({
   elevateBtnText: { color: '#FFD700', fontWeight: 'bold', fontSize: 12 },
   revokeBtn: { backgroundColor: 'rgba(255, 68, 68, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: '#ff4444' },
   revokeBtnText: { color: '#ff4444', fontWeight: 'bold', fontSize: 12 },
-  actionBtn: { backgroundColor: '#FFD700', padding: 10, borderRadius: 6 }, 
-  actionBtnText: { color: '#000', fontWeight: 'bold' }, 
-  actionBtnSecondary: { backgroundColor: '#2a2a2a', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#FFD700' }, 
-  actionBtnTextSecondary: { color: '#FFD700', fontWeight: 'bold' }, 
-  actionBtnDanger: { backgroundColor: '#ff4444', padding: 10, borderRadius: 6 }, 
+  actionBtn: { backgroundColor: '#FFD700', padding: 10, borderRadius: 6 },
+  actionBtnText: { color: '#000', fontWeight: 'bold' },
+  actionBtnSecondary: { backgroundColor: '#2a2a2a', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#FFD700' },
+  actionBtnTextSecondary: { color: '#FFD700', fontWeight: 'bold' },
+  actionBtnDanger: { backgroundColor: '#ff4444', padding: 10, borderRadius: 6 },
   actionBtnTextDanger: { color: '#fff', fontWeight: 'bold' },
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
+
+  // DASHBOARD STYLES
+  dashboardGrid: { padding: 15, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 40 },
+  tile: { width: '48%', backgroundColor: '#1e1e1e', padding: 20, borderRadius: 20, marginBottom: 15, borderWidth: 1, borderColor: '#333', alignItems: 'center', justifyContent: 'center' },
+  tileIconContainer: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  tileIcon: { fontSize: 30 },
+  tileTitle: { color: '#fff', fontSize: 13, fontWeight: 'bold', marginBottom: 4, textAlign: 'center' },
+  tileDesc: { color: '#666', fontSize: 11, textAlign: 'center' },
+
+  // SUB-VIEW COMMON
+  subViewContainer: { padding: 20, paddingBottom: 60 },
+  subViewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  subViewTitle: { color: '#FFD700', fontSize: 24, fontWeight: 'bold' },
+  addEventBtnSmall: { backgroundColor: 'rgba(0, 208, 132, 0.1)', borderWidth: 1, borderColor: '#00D084', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+  addEventBtnTextSmall: { color: '#00D084', fontWeight: 'bold', fontSize: 13 },
+  addBetBtnSmall: { backgroundColor: 'rgba(255, 215, 0, 0.1)', borderWidth: 1, borderColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+  addBetBtnTextSmall: { color: '#FFD700', fontWeight: 'bold', fontSize: 13 },
+  filterLabel: { color: '#666', fontSize: 12, fontWeight: 'bold', marginBottom: 10, textTransform: 'uppercase' },
+
+  // BET CARD ENHANCEMENTS
+  betCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  typeBadgeBlind: { color: '#BB86FC', fontSize: 10, fontWeight: 'bold', marginBottom: 4 },
+  typeBadgeP2P: { color: '#FFD700', fontSize: 10, fontWeight: 'bold', marginBottom: 4 },
+  statusBadgeOpen: { color: '#00D084', fontSize: 12, fontWeight: 'bold' },
+  betActionRow: { flexDirection: 'row', gap: 10 },
+  actionBtnTrash: { backgroundColor: 'rgba(255, 68, 68, 0.1)', borderWidth: 1, borderColor: '#ff4444', padding: 10, borderRadius: 6 },
+  actionBtnTextTrash: { color: '#ff4444', fontWeight: 'bold' },
+  actionBtnGrade: { backgroundColor: '#00D084', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 6 },
+  actionBtnTextGrade: { color: '#000', fontWeight: 'bold' },
+
+  // INBOX
+  inboxSection: { marginBottom: 30 },
+
+  // CAMPAIGN SETTINGS
+  settingsGroup: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 15, borderWidth: 1, borderColor: '#333', marginBottom: 20 },
+  codeRow: { backgroundColor: '#121212', padding: 15, borderRadius: 8, alignItems: 'center', marginVertical: 10 },
+  joinCodeText: { color: '#FFD700', fontSize: 32, fontWeight: 'bold', letterSpacing: 5 },
+  joinCodeSub: { color: '#666', fontSize: 12, textAlign: 'center' },
+  closeBoardBtn: { backgroundColor: 'rgba(255, 68, 68, 0.1)', padding: 20, borderRadius: 15, borderWidth: 1, borderColor: '#ff4444', marginBottom: 15 },
+  closeBoardBtnText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
+  closeBoardBtnSub: { color: 'rgba(255, 68, 68, 0.5)', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  deleteCampaignBtn: { backgroundColor: 'transparent', padding: 20, borderRadius: 15, borderWidth: 1, borderColor: '#7f1d1d', marginBottom: 40 },
+  deleteCampaignBtnText: { color: '#991b1b', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
+  deleteCampaignBtnSub: { color: '#7f1d1d', fontSize: 11, textAlign: 'center', marginTop: 4 },
 });

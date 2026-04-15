@@ -12,7 +12,7 @@ export interface EventItem {
 
 interface EventSwitcherProps {
   events: EventItem[];
-  activeEventId: string;
+  activeEventId: string | null;
   onSelectEvent: (eventId: string) => void;
 }
 

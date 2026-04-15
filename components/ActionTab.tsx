@@ -9,7 +9,7 @@ interface ActionTabProps {
   p2pBets: any[];
   blindMatchups: any[];
   eventsList: EventItem[];
-  activeEventSwitchId: string;
+  activeEventSwitchId: string | null;
   onSelectEvent: (id: string) => void;
   onPitchPress: () => void;
   renderBetCard: (args: { item: any }) => React.ReactElement | null;

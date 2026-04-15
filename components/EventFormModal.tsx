@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  Modal, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  Modal,
   Alert,
   KeyboardAvoidingView,
   ScrollView,
@@ -26,11 +26,11 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState<'manual' | 'auto'>('manual');
-  
+
   // Explicit strings for Expo Web compat
   const [dateInput, setDateInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
         setName(existingEvent.name);
         setDescription(existingEvent.description || '');
         setTriggerType(existingEvent.trigger_type || 'manual');
-        
+
         if (existingEvent.start_time) {
           try {
             const d = new Date(existingEvent.start_time);
@@ -48,7 +48,7 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
             const dd = String(d.getUTCDate()).padStart(2, '0');
             setDateInput(`${yyyy}-${mm}-${dd}`);
-            
+
             // Format to HH:MM
             const hh = String(d.getUTCHours()).padStart(2, '0');
             const min = String(d.getUTCMinutes()).padStart(2, '0');
@@ -81,7 +81,7 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
     if (dateInput.trim() || timeInput.trim() || triggerType === 'auto') {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       const timeRegex = /^\d{2}:\d{2}$/;
-      
+
       if (!dateRegex.test(dateInput)) {
         const msg = 'Date must be in YYYY-MM-DD format.';
         if (Platform.OS === 'web') return window.alert(msg);
@@ -108,9 +108,9 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
     }
 
     if (triggerType === 'auto' && !parsedIsoString) {
-        const msg = 'Auto-trigger events require a valid Date and Time.';
-        if (Platform.OS === 'web') return window.alert(msg);
-        return Alert.alert('Invalid', msg);
+      const msg = 'Auto-trigger events require a valid Date and Time.';
+      if (Platform.OS === 'web') return window.alert(msg);
+      return Alert.alert('Invalid', msg);
     }
 
     setIsSubmitting(true);
@@ -122,7 +122,7 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
           trigger_type: triggerType,
           start_time: parsedIsoString
         }).eq('id', existingEvent.id);
-        
+
         if (error) throw error;
       } else {
         if (!campaignId) throw new Error('Missing campaign reference.');
@@ -137,7 +137,7 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
 
         if (error) throw error;
       }
-      
+
       onSaveComplete();
       onClose();
     } catch (error: any) {
@@ -157,13 +157,13 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
     >
       {/* Holy Grail Layout applied to Modal */}
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' }}>
-        <KeyboardAvoidingView 
-          style={{ flex: 1 }} 
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
         >
-          <ScrollView 
-            style={{ flex: 1 }} 
+          <ScrollView
+            style={{ flex: 1 }}
             contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
@@ -177,18 +177,18 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
               </View>
 
               <Text style={styles.label}>Event Name</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="e.g. Saturday Main Event" 
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. Saturday Main Event"
                 placeholderTextColor="#666"
                 value={name}
                 onChangeText={setName}
               />
 
               <Text style={styles.label}>Description (Optional)</Text>
-              <TextInput 
-                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]} 
-                placeholder="Brief description of the action..." 
+              <TextInput
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                placeholder="Brief description of the action..."
                 placeholderTextColor="#666"
                 multiline
                 value={description}
@@ -197,13 +197,13 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
 
               <Text style={styles.label}>Trigger Type</Text>
               <View style={styles.segmentContainer}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.segmentBtn, triggerType === 'manual' && styles.segmentBtnActive]}
                   onPress={() => setTriggerType('manual')}
                 >
                   <Text style={[styles.segmentText, triggerType === 'manual' && styles.segmentTextActive]}>Manual</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.segmentBtn, triggerType === 'auto' && styles.segmentBtnActive]}
                   onPress={() => setTriggerType('auto')}
                 >
@@ -215,9 +215,9 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
               <View style={styles.timeRow}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={styles.subLabel}>Date (YYYY-MM-DD)</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="YYYY-MM-DD" 
+                  <TextInput
+                    style={styles.input}
+                    placeholder="YYYY-MM-DD"
                     placeholderTextColor="#666"
                     value={dateInput}
                     onChangeText={setDateInput}
@@ -225,9 +225,9 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.subLabel}>Time (HH:MM)</Text>
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="14:00" 
+                  <TextInput
+                    style={styles.input}
+                    placeholder="14:00"
                     placeholderTextColor="#666"
                     value={timeInput}
                     onChangeText={setTimeInput}
@@ -235,14 +235,14 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                 </View>
               </View>
 
-              <TouchableOpacity 
-                style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]} 
+              <TouchableOpacity
+                style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]}
                 onPress={handleSave}
                 disabled={isSubmitting}
               >
                 <Text style={styles.saveButtonText}>{isSubmitting ? 'Saving...' : 'Save Settings'}</Text>
               </TouchableOpacity>
-              
+
               {/* Bottom Padding for SafeArea */}
               {Platform.OS === 'ios' && <View style={{ height: 40 }} />}
             </View>
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 24,
-    paddingBottom: 30, 
+    paddingBottom: 30,
   },
   header: {
     flexDirection: 'row',

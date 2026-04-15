@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  StyleSheet, Text, View, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView 
+import {
+  StyleSheet, Text, View, FlatList, TouchableOpacity,
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,10 +23,10 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [walletBalance, setWalletBalance] = useState(0);
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('guest');
-  
+
   const [bets, setBets] = useState<any[]>([]);
   const [p2pBets, setP2pBets] = useState<any[]>([]);
-  const [blindMatchups, setBlindMatchups] = useState<any[]>([]); 
+  const [blindMatchups, setBlindMatchups] = useState<any[]>([]);
   const [myWagers, setMyWagers] = useState<any[]>([]);
   const [myBets, setMyBets] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
@@ -67,14 +67,14 @@ export default function DashboardScreen({ route, navigation }: any) {
   // --- PITCH MODAL HELPER FUNCTIONS ---
   const handleTogglePitchBetType = (type: any) => {
     setPitchBetType(type);
-    
+
     // Automatically fill in Over/Under if they select O/U
     if (type === 'over_under') {
       setPitchOptions([
         { id: '1', label: 'Over', odds: '' },
         { id: '2', label: 'Under', odds: '' }
       ]);
-    } 
+    }
     // Clear it out if they switch back to a standard Prop bet
     else if (type === 'prop') {
       setPitchOptions([
@@ -83,7 +83,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       ]);
     }
   };
-  
+
   // --- INPUT SANITIZER ---
   const sanitizeNumber = (value: string) => {
     let sanitized = value.replace(/[^0-9.]/g, '');
@@ -115,7 +115,7 @@ export default function DashboardScreen({ route, navigation }: any) {
     if (field === 'odds') {
       // Instantly strip out anything that isn't a number or a decimal point
       let sanitized = value.replace(/[^0-9.]/g, '');
-      
+
       // Prevent users from typing multiple decimals (e.g., "2.5.5")
       if (sanitized.split('.').length > 2) {
         sanitized = sanitized.substring(0, sanitized.length - 1);
@@ -162,19 +162,19 @@ export default function DashboardScreen({ route, navigation }: any) {
 
     async function setupRealtime() {
       const storedUserId = await AsyncStorage.getItem('userId');
-      const storedCampaignId = await AsyncStorage.getItem('campaignId'); 
+      const storedCampaignId = await AsyncStorage.getItem('campaignId');
 
       walletSub = supabase.channel('public:campaign_participants_dashboard')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_participants', filter: `user_id=eq.${storedUserId}` }, () => loadBoard()).subscribe();
       betsSub = supabase.channel('public:bets_dashboard')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => loadBoard()).subscribe();
-      campaignSub = supabase.channel(`campaign_status_${storedCampaignId}`) 
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaigns', filter: `id=eq.${storedCampaignId}` }, 
+      campaignSub = supabase.channel(`campaign_status_${storedCampaignId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaigns', filter: `id=eq.${storedCampaignId}` },
           (payload) => { if (payload.new.status === 'closed') navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] }); }
         ).subscribe();
       p2pSub = supabase.channel('public:p2p_dashboard')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => loadBoard()).subscribe();
-      blindSub = supabase.channel('public:blind_dashboard') 
+      blindSub = supabase.channel('public:blind_dashboard')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => loadBoard()).subscribe();
       const proposalSub = supabase.channel('public:proposal_dashboard')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => loadBoard()).subscribe();
@@ -196,7 +196,7 @@ export default function DashboardScreen({ route, navigation }: any) {
     if (!joinCode) return;
     await Clipboard.setStringAsync(joinCode);
     Alert.alert('Copied!', 'Room code copied to clipboard. Send it to your friends!');
-    setShareModalVisible(false); 
+    setShareModalVisible(false);
   }
 
   async function loadBoard(overrideEventId?: string | null) {
@@ -204,8 +204,8 @@ export default function DashboardScreen({ route, navigation }: any) {
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
-      
-      setUserId(storedUserId); 
+
+      setUserId(storedUserId);
       setCampaignId(storedCampaignId);
 
       const { data: campaignData } = await supabase.from('campaigns').select('join_code, status').eq('id', storedCampaignId).single();
@@ -216,9 +216,9 @@ export default function DashboardScreen({ route, navigation }: any) {
       if (campaignData?.join_code) setJoinCode(campaignData.join_code);
 
       const { data: participantData } = await supabase.from('campaign_participants').select('global_point_balance, role').eq('user_id', storedUserId).eq('campaign_id', storedCampaignId).single();
-      if (participantData) { 
-        setWalletBalance(participantData.global_point_balance); 
-        setUserRole(participantData.role); 
+      if (participantData) {
+        setWalletBalance(participantData.global_point_balance);
+        setUserRole(participantData.role);
       }
 
       const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', storedCampaignId);
@@ -237,22 +237,22 @@ export default function DashboardScreen({ route, navigation }: any) {
       }
       setActiveEvent(eventsDataList.find((e: any) => e.id === targetEventId));
 
-      const eventFilter = `event_id.eq.${targetEventId},event_id.is.null`;
+      const orFilter = `event_id.is.null${targetEventId ? `,event_id.eq.${targetEventId}` : ''}`;
 
       // Fetch pending approvals
-      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).or(eventFilter).eq('status', 'pending');
+      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending').or(orFilter);
       const { count: pendingP2P } = await supabase.from('p2p_prop_bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
       const { count: pendingBlind } = await supabase.from('blind_matchups').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
-      
+
       setPendingApprovals((pendingProps || 0) + (pendingP2P || 0) + (pendingBlind || 0));
 
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).or(eventFilter).in('status', ['open', 'locked']);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
       if (betsData) setBets(betsData);
 
-      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).or(eventFilter).in('status', ['open', 'locked', 'resolved']);
+      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter);
       if (p2pData) setP2pBets(p2pData);
 
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).or(eventFilter).in('status', ['open', 'matched', 'resolved']);
+      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter);
       if (blindData) setBlindMatchups(blindData);
 
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
@@ -262,14 +262,14 @@ export default function DashboardScreen({ route, navigation }: any) {
         setMyWagers(activeWagers.filter((w: any) => w.status === 'pending'));
         setMyBets(activeWagers.reverse());
       }
-      
-      const { data: standingsData } = await supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false }); 
+
+      const { data: standingsData } = await supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false });
       if (standingsData) setStandings(standingsData);
 
-    } catch (error: any) { 
-      console.error(error.message); 
-    } finally { 
-      setLoading(false); 
+    } catch (error: any) {
+      console.error(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -301,14 +301,15 @@ export default function DashboardScreen({ route, navigation }: any) {
       }
 
       Alert.alert('Bet Already Placed', 'Want to cancel your ticket, refund your points, and pick again?', [
-          { text: 'Keep Ticket', style: 'cancel' },
-          { text: 'Refund & Edit', style: 'destructive', onPress: async () => {
-              const { error } = await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
-              if (error) { Alert.alert('Error', error.message); return; }
-              loadBoard();
-            }
+        { text: 'Keep Ticket', style: 'cancel' },
+        {
+          text: 'Refund & Edit', style: 'destructive', onPress: async () => {
+            const { error } = await supabase.rpc('cancel_wager', { target_wager_id: existingWager.id });
+            if (error) { Alert.alert('Error', error.message); return; }
+            loadBoard();
           }
-        ]);
+        }
+      ]);
       return;
     }
 
@@ -369,17 +370,17 @@ export default function DashboardScreen({ route, navigation }: any) {
     try {
       const { error } = await supabase.rpc('claim_p2p_side', { p_bet_id: betId, p_user_id: userId, p_side: side, p_cost: cost });
       if (error) throw error;
-      loadBoard(); 
+      loadBoard();
     } catch (err: any) {
       if (Platform.OS === 'web') window.alert(err.message); else Alert.alert('Error', err.message);
-      loadBoard(); 
+      loadBoard();
     } finally { setIsSubmitting(false); }
   }
 
   async function submitBlindBid() {
     const bidValue = parseFloat(blindBid);
     if (isNaN(bidValue) || bidValue <= 1) return Alert.alert("Invalid", "Multiplier bid must be greater than 1.0x");
-    
+
     const base = selectedMatchup.base_amount;
     const maxRisk = Math.max(base, (base * bidValue) - base);
     if (maxRisk > walletBalance) {
@@ -394,7 +395,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         p_user_2_bid: bidValue
       });
       if (error) throw error;
-      
+
       setBlindModalVisible(false);
       setBlindBid('2.0');
       loadBoard();
@@ -408,7 +409,7 @@ export default function DashboardScreen({ route, navigation }: any) {
   // --- NEW: HANDLE THE PITCH SUBMISSION ---
   async function handleSubmitPitch() {
     if (!pitchQuestion.trim()) return Alert.alert('Error', 'Please enter a question or scenario.');
-    
+
     setIsSubmitting(true);
     try {
       if (pitchBetType === 'prop' || pitchBetType === 'over_under') {
@@ -438,13 +439,14 @@ export default function DashboardScreen({ route, navigation }: any) {
 
         // If it passes the checks, it's safe to insert!
         const { data: betData, error: betError } = await supabase.from('bets').insert([{
+          campaign_id: campaignId,
           event_id: pitchEventScope,
           question: pitchQuestion,
           type: pitchBetType,
-          status: 'pending', 
-          creator_id: userId 
+          status: 'pending',
+          creator_id: userId
         }]).select().single();
-        
+
         if (betError) throw betError;
 
         // Insert the options
@@ -459,16 +461,16 @@ export default function DashboardScreen({ route, navigation }: any) {
         const wagerAmt = parseFloat(pitchWager);
         const multiAmt = parseFloat(pitchMultiplier);
         if (isNaN(multiAmt) || multiAmt <= 1) {
-        setIsSubmitting(false);
-        const msg = 'Multiplier must be greater than 1.0x';
-        return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
-      }
+          setIsSubmitting(false);
+          const msg = 'Multiplier must be greater than 1.0x';
+          return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
+        }
 
         if (isNaN(wagerAmt) || wagerAmt <= 0) return Alert.alert('Invalid', 'Wager must be > 0');
         if (isNaN(multiAmt) || multiAmt <= 1) {
-        setIsSubmitting(false);
-        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
-      }
+          setIsSubmitting(false);
+          return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
+        }
         if (wagerAmt > walletBalance) return Alert.alert('Insufficient Funds', 'Not enough points to back this pitch.');
 
         const { error } = await supabase.from('p2p_prop_bets').insert([{
@@ -483,7 +485,7 @@ export default function DashboardScreen({ route, navigation }: any) {
           status: 'pending_approval' // 🚨 Keeps it off live board
         }]);
         if (error) throw error;
-      } 
+      }
       else if (pitchBetType === 'blind') {
         const base = parseFloat(pitchBlindBase);
         const multiAmt = parseFloat(pitchBlindMultiplier); // <-- We already have the number here!
@@ -491,19 +493,19 @@ export default function DashboardScreen({ route, navigation }: any) {
           setIsSubmitting(false);
           const msg = 'Multiplier must be greater than 1.0x';
           return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
-        } 
+        }
         if (isNaN(base) || base <= 0) return Alert.alert('Invalid', 'Base amount must be > 0');
         if (isNaN(multiAmt) || multiAmt <= 1) {
-        setIsSubmitting(false);
-        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
-      }
+          setIsSubmitting(false);
+          return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
+        }
 
-      // Inside handleSubmitPitch -> blind block:
-      const multi = parseFloat(pitchBlindMultiplier);
-      if (isNaN(multi) || multi <= 1) {
-        setIsSubmitting(false);
-        return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
-      }
+        // Inside handleSubmitPitch -> blind block:
+        const multi = parseFloat(pitchBlindMultiplier);
+        if (isNaN(multi) || multi <= 1) {
+          setIsSubmitting(false);
+          return Alert.alert('Invalid', 'Multiplier must be greater than 1.0x');
+        }
         const maxRisk = Math.max(Math.trunc(base), Math.trunc((base * multi) - base));
         if (maxRisk > walletBalance) return Alert.alert('Insufficient Funds', 'Not enough points to back this pitch.');
 
@@ -528,7 +530,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       setPitchWager('100'); setPitchMultiplier('2.0');
       setPitchBlindBase('100'); setPitchBlindMultiplier('2.0'); setPitchBlindPercent('50');
       setPitchP2PPercent('50');
-      
+
       setSuggestModalVisible(false);
       Alert.alert('Pitch Sent!', 'Your bet has been sent to the Host for approval.');
       loadBoard();
@@ -543,10 +545,10 @@ export default function DashboardScreen({ route, navigation }: any) {
     try {
       const savedUserId = await AsyncStorage.getItem('userId');
       const savedUserName = await AsyncStorage.getItem('userName');
-      
+
       await AsyncStorage.removeItem('campaignId');
       await AsyncStorage.removeItem('campaignName');
-      
+
       if (navigation.replace) {
         navigation.replace('Campaigns', { userId: savedUserId, userName: savedUserName });
       } else {
@@ -588,13 +590,13 @@ export default function DashboardScreen({ route, navigation }: any) {
               <Text style={{ color: '#BB86FC', fontWeight: 'bold', textAlign: 'center', marginBottom: 10, fontSize: 16 }}>
                 Match Made! Final Odds: {Number(item.final_multiplier).toFixed(2)}x
               </Text>
-              
+
               {item.side_a_user_id === userId || item.side_b_user_id === userId ? (
                 (() => {
                   const isA = item.side_a_user_id === userId;
                   const oppId = isA ? item.side_b_user_id : item.side_a_user_id;
                   const oppName = getPlayerName(oppId);
-                  
+
                   const baseAmt = parseFloat(item.base_amount) || 0;
                   const finalMulti = parseFloat(item.final_multiplier) || 0;
 
@@ -610,8 +612,8 @@ export default function DashboardScreen({ route, navigation }: any) {
                       </View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.lockedDetails}>Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{myPick}</Text></Text>
-                          <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{myWager} pts</Text></Text>
+                          <Text style={styles.lockedDetails}>Pick: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{myPick}</Text></Text>
+                          <Text style={styles.lockedDetails}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{myWager} pts</Text></Text>
                         </View>
                         <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
                           <Text style={{ color: '#BB86FC', fontWeight: 'bold', fontSize: 16 }}>
@@ -629,7 +631,7 @@ export default function DashboardScreen({ route, navigation }: any) {
               )}
             </View>
           ) : (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.optionButton, (isCreator || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]}
               disabled={isCreator || isLocked}
               onPress={() => { setSelectedMatchup(item); setBlindModalVisible(true); }}
@@ -648,7 +650,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       const iClaimedA = item.side_a_user_id === userId;
       const iClaimedB = item.side_b_user_id === userId;
       const hasAction = iClaimedA || iClaimedB;
-      
+
       return (
         <View style={[styles.betCard, { borderColor: '#FFD700', borderWidth: 2 }, isLocked && { opacity: 0.8 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
@@ -657,10 +659,10 @@ export default function DashboardScreen({ route, navigation }: any) {
               <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
             </View>
           </View>
-          
+
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {/* SIDE A */}
-            <TouchableOpacity style={[ styles.optionButton, { flex: 1, paddingVertical: 12 }, (item.side_a_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' } ]} disabled={!!item.side_a_user_id || isLocked || iClaimedB} onPress={() => handleClaimP2P(item.id, 'A', item.wager_amount)} >
+            <TouchableOpacity style={[styles.optionButton, { flex: 1, paddingVertical: 12 }, (item.side_a_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]} disabled={!!item.side_a_user_id || isLocked || iClaimedB} onPress={() => handleClaimP2P(item.id, 'A', item.wager_amount)} >
               <Text style={item.side_a_user_id ? { color: '#666', fontWeight: 'bold', textAlign: 'center' } : [styles.optionLabel, { textAlign: 'center' }]}>
                 {item.side_a_user_id ? (iClaimedA ? `✅ You locked` : `🔒 ${getPlayerName(item.side_a_user_id)} locked`) : item.option_a_label}
               </Text>
@@ -670,11 +672,11 @@ export default function DashboardScreen({ route, navigation }: any) {
                   <Text style={{ color: '#a0a0a0', fontSize: 10, marginTop: 4 }}>{item.wager_amount} pts</Text>
                 </View>
               )}
-              {item.side_a_user_id && ( <Text style={{ color: iClaimedA ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}> {item.option_a_label} </Text> )}
+              {item.side_a_user_id && (<Text style={{ color: iClaimedA ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}> {item.option_a_label} </Text>)}
             </TouchableOpacity>
 
             {/* SIDE B */}
-            <TouchableOpacity style={[ styles.optionButton, { flex: 1, paddingVertical: 12 }, (item.side_b_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' } ]} disabled={!!item.side_b_user_id || isLocked || iClaimedA} onPress={() => handleClaimP2P(item.id, 'B', item.challenger_cost)} >
+            <TouchableOpacity style={[styles.optionButton, { flex: 1, paddingVertical: 12 }, (item.side_b_user_id || isLocked) && { backgroundColor: '#121212', borderColor: '#333' }]} disabled={!!item.side_b_user_id || isLocked || iClaimedA} onPress={() => handleClaimP2P(item.id, 'B', item.challenger_cost)} >
               <Text style={item.side_b_user_id ? { color: '#666', fontWeight: 'bold', textAlign: 'center' } : [styles.optionLabel, { textAlign: 'center' }]}>
                 {item.side_b_user_id ? (iClaimedB ? `✅ You locked` : `🔒 ${getPlayerName(item.side_b_user_id)} locked`) : item.option_b_label}
               </Text>
@@ -684,7 +686,7 @@ export default function DashboardScreen({ route, navigation }: any) {
                   <Text style={{ color: '#a0a0a0', fontSize: 10, marginTop: 4 }}>{item.challenger_cost} pts</Text>
                 </View>
               )}
-              {item.side_b_user_id && ( <Text style={{ color: iClaimedB ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}> {item.option_b_label} </Text> )}
+              {item.side_b_user_id && (<Text style={{ color: iClaimedB ? '#00D084' : '#666', fontSize: 12, marginTop: 4, textAlign: 'center', fontWeight: 'bold' }}> {item.option_b_label} </Text>)}
             </TouchableOpacity>
           </View>
 
@@ -693,15 +695,15 @@ export default function DashboardScreen({ route, navigation }: any) {
               <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 14 }}>🎯 Your Ticket</Text>
                 <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
-                  VS. { (iClaimedA && item.side_b_user_id) ? getPlayerName(item.side_b_user_id).toUpperCase() : 
-                         (iClaimedB && item.side_a_user_id) ? getPlayerName(item.side_a_user_id).toUpperCase() : 
-                         'WAITING...' }
+                  VS. {(iClaimedA && item.side_b_user_id) ? getPlayerName(item.side_b_user_id).toUpperCase() :
+                    (iClaimedB && item.side_a_user_id) ? getPlayerName(item.side_a_user_id).toUpperCase() :
+                      'WAITING...'}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.lockedDetails}>Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{iClaimedA ? item.option_a_label : item.option_b_label}</Text></Text>
-                  <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{iClaimedA ? item.wager_amount : item.challenger_cost} pts</Text></Text>
+                  <Text style={styles.lockedDetails}>Pick: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{iClaimedA ? item.option_a_label : item.option_b_label}</Text></Text>
+                  <Text style={styles.lockedDetails}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{iClaimedA ? item.wager_amount : item.challenger_cost} pts</Text></Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
                   <Text style={[styles.lockedDetails, { color: '#FFD700', fontWeight: 'bold', fontSize: 16 }]}>
@@ -715,29 +717,29 @@ export default function DashboardScreen({ route, navigation }: any) {
         </View>
       );
     }
-    
+
     return (
       <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
           <Text style={styles.betQuestion}>{item.question}</Text>
-          <View style={[ styles.statusBadge, isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' } ]}>
+          <View style={[styles.statusBadge, isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' }]}>
             <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}> {isOpen ? '🟢 OPEN' : '🔒 LOCKED'} </Text>
           </View>
         </View>
-        
+
         {existingWager ? (
           <TouchableOpacity style={[styles.lockedWagerCard, isLocked && { borderColor: '#666' }]} onPress={() => openBetSlip(item)} disabled={isLocked} >
             <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={styles.lockedText}>{isLocked ? '🔒 Ticket Locked' : '✅ Ticket Placed'}</Text>
-              {isOpen && <Text style={{color: '#00D084', fontSize: 12, fontStyle: 'italic'}}>Tap to Edit</Text>}
+              {isOpen && <Text style={{ color: '#00D084', fontSize: 12, fontStyle: 'italic' }}>Tap to Edit</Text>}
             </View>
             <View style={{ marginTop: 12, flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.lockedDetails}>Pick: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.bet_options?.label}</Text></Text>
-                <Text style={styles.lockedDetails}>Odds: <Text style={{color: '#00D084', fontWeight: 'bold'}}>{existingWager.bet_options?.multiplier}x</Text></Text>
+                <Text style={styles.lockedDetails}>Pick: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{existingWager.bet_options?.label}</Text></Text>
+                <Text style={styles.lockedDetails}>Odds: <Text style={{ color: '#00D084', fontWeight: 'bold' }}>{existingWager.bet_options?.multiplier}x</Text></Text>
               </View>
               <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                <Text style={styles.lockedDetails}>Wager: <Text style={{color: '#fff', fontWeight: 'bold'}}>{existingWager.points_risked} pts</Text></Text>
+                <Text style={styles.lockedDetails}>Wager: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{existingWager.points_risked} pts</Text></Text>
                 <Text style={[styles.lockedDetails, { color: '#00D084', fontWeight: 'bold' }]}> Win: {Math.floor(existingWager.points_risked * (existingWager.bet_options?.multiplier || 1))} pts </Text>
               </View>
             </View>
@@ -769,9 +771,9 @@ export default function DashboardScreen({ route, navigation }: any) {
   ].sort((a, b) => {
     const getWeight = (status: string) => { if (status === 'won' || status === 'lost' || status === 'resolved') return 2; return 1; };
     const weightA = getWeight(a.status || 'pending'); const weightB = getWeight(b.status || 'pending');
-    if (weightA !== weightB) return weightA - weightB; 
+    if (weightA !== weightB) return weightA - weightB;
     const dateA = a.created_at ? new Date(a.created_at).getTime() : 0; const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-    return dateB - dateA; 
+    return dateB - dateA;
   });
 
   return (
@@ -857,392 +859,392 @@ export default function DashboardScreen({ route, navigation }: any) {
           </TouchableOpacity>
         </View>
 
-      {/* --- BLIND BID MODAL --- */}
-      <Modal visible={blindModalVisible} animationType="slide" transparent={true} statusBarTranslucent={true}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.betSlipContainer}>
-            <View style={styles.gradeModalContent}>
-              {(() => {
-                const sideA = selectedMatchup?.side_a_label || 'Team A';
-                const sideB = selectedMatchup?.side_b_label || 'Team B';
-                const baseAmt = parseFloat(selectedMatchup?.base_amount) || 0;
-                const myBid = parseFloat(blindBid) || 1.0;
-                const currentBalance = walletBalance || 0;
+        {/* --- BLIND BID MODAL --- */}
+        <Modal visible={blindModalVisible} animationType="slide" transparent={true} statusBarTranslucent={true}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.betSlipContainer}>
+              <View style={styles.gradeModalContent}>
+                {(() => {
+                  const sideA = selectedMatchup?.side_a_label || 'Team A';
+                  const sideB = selectedMatchup?.side_b_label || 'Team B';
+                  const baseAmt = parseFloat(selectedMatchup?.base_amount) || 0;
+                  const myBid = parseFloat(blindBid) || 1.0;
+                  const currentBalance = walletBalance || 0;
 
-                const estTotalPot = Math.trunc(baseAmt * myBid);
-                const estUnderdogRisk = Math.trunc(estTotalPot - baseAmt);
-                
-                const maxPossibleRisk = Math.max(baseAmt, estUnderdogRisk);
-                const isOverleveraged = maxPossibleRisk > currentBalance;
+                  const estTotalPot = Math.trunc(baseAmt * myBid);
+                  const estUnderdogRisk = Math.trunc(estTotalPot - baseAmt);
 
-                return (
-                  <>
-                    <Text style={[styles.modalTitle, { color: '#BB86FC' }]}>Place Your Blind Bid</Text>
-                    
-                    <View style={{ marginBottom: 20, alignItems: 'center' }}>
-                      <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedMatchup?.question}</Text>
-                      <Text style={{ color: '#BB86FC', fontSize: 14 }}>{sideA} vs {sideB}</Text>
-                    </View>
+                  const maxPossibleRisk = Math.max(baseAmt, estUnderdogRisk);
+                  const isOverleveraged = maxPossibleRisk > currentBalance;
 
-                    <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
-                        <TextInput 
-                          style={styles.p2pInput}
-                          keyboardType="decimal-pad"
-                          value={blindBid}
-                          onChangeText={syncBidFromMulti}
-                        />
+                  return (
+                    <>
+                      <Text style={[styles.modalTitle, { color: '#BB86FC' }]}>Place Your Blind Bid</Text>
+
+                      <View style={{ marginBottom: 20, alignItems: 'center' }}>
+                        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{selectedMatchup?.question}</Text>
+                        <Text style={{ color: '#BB86FC', fontSize: 14 }}>{sideA} vs {sideB}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Win Probability (%)</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <TextInput 
-                            style={[styles.p2pInput, { flex: 1 }]}
-                            keyboardType="number-pad"
-                            value={blindBidPercent}
-                            onChangeText={syncBidFromPercent}
+
+                      <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Multiplier (x)</Text>
+                          <TextInput
+                            style={styles.p2pInput}
+                            keyboardType="decimal-pad"
+                            value={blindBid}
+                            onChangeText={syncBidFromMulti}
                           />
-                          <Text style={{ color: '#fff', position: 'absolute', right: 15, fontWeight: 'bold' }}>%</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 5 }}>Win Probability (%)</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <TextInput
+                              style={[styles.p2pInput, { flex: 1 }]}
+                              keyboardType="number-pad"
+                              value={blindBidPercent}
+                              onChangeText={syncBidFromPercent}
+                            />
+                            <Text style={{ color: '#fff', position: 'absolute', right: 15, fontWeight: 'bold' }}>%</Text>
+                          </View>
                         </View>
                       </View>
-                    </View>
 
-                    <View style={[styles.previewContainer, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)', padding: 15 }]}>
-                      <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
-                        {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'Potential Outcomes (Estimates*)'}
-                      </Text>
-                      
-                      <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 15 }}>
-                        <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 12 }}>If you bid LOWER (You get {sideA}):</Text>
-                        <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: '#fff'}}>{baseAmt} pts</Text></Text>
-                        <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
-                      </View>
-
-                      <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
-                        <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 12 }}>If you bid HIGHER (You get {sideB}):</Text>
-                        <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{color: isOverleveraged ? '#ff4444' : '#fff', fontWeight: isOverleveraged ? 'bold' : 'normal'}}>{estUnderdogRisk} pts</Text></Text>
-                        <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
-                      </View>
-
-                      {isOverleveraged && (
-                        <Text style={{ color: '#ff4444', fontSize: 10, marginTop: 10, textAlign: 'center', fontWeight: 'bold' }}>
-                          You need {maxPossibleRisk - currentBalance} more points to cover this bid.
-                        </Text>
-                      )}
-                    </View>
-
-                    <TouchableOpacity 
-                      style={[styles.confirmButton, { backgroundColor: isOverleveraged ? '#444' : '#BB86FC' }, isSubmitting && { opacity: 0.7 }]} 
-                      onPress={submitBlindBid} 
-                      disabled={isSubmitting || isOverleveraged}
-                    >
-                      <Text style={styles.confirmButtonText}>{isSubmitting ? 'Locking...' : 'Lock In Blind Bid'}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setBlindModalVisible(false)}>
-                      <Text style={styles.closeSlipText}>Cancel</Text>
-                    </TouchableOpacity>
-                  </>
-                );
-              })()}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* --- SHARE MODAL --- */}
-      <Modal visible={shareModalVisible} transparent={true} animationType="fade">
-        <View style={styles.centeredModalOverlay}>
-          <View style={styles.shareModalContainer}>
-            <Text style={styles.shareModalTitle}>Invite Players</Text>
-            <Text style={styles.shareModalSub}>Give this code to your friends so they can join the action.</Text>
-            <View style={styles.codeDisplayBox}>
-              <Text style={styles.hugeCodeText}>{joinCode}</Text>
-            </View>
-            <TouchableOpacity style={styles.copyButton} onPress={copyToClipboard}>
-              <Text style={styles.copyButtonText}>📋 Copy Code</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShareModalVisible(false)}>
-              <Text style={styles.closeModalText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* --- BET SLIP MODAL (HOUSE BETS) --- */}
-      <Modal visible={modalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.betSlipContainer}>
-            <View style={styles.slipHeaderRow}>
-              <Text style={styles.slipTitle}>Bet Slip</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
-            </View>
-            {selectedBet && selectedOption && (
-              <View style={styles.slipDetails}>
-                <Text style={styles.slipQuestion}>{selectedBet.question}</Text>
-                <View style={styles.slipPickRow}>
-                  <Text style={styles.slipPickLabel}>Pick: <Text style={{color: '#fff'}}>{selectedOption.label}</Text></Text>
-                  <Text style={styles.slipPickOdds}>{selectedOption.multiplier}x</Text>
-                </View>
-              </View>
-            )}
-            <View style={styles.wagerInputRow}>
-              <Text style={styles.wagerLabel}>Risk:</Text>
-              <TextInput style={styles.wagerInput} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={wagerAmount} onChangeText={setWagerAmount} autoFocus />
-            </View>
-            <View style={styles.payoutRow}>
-              <Text style={styles.payoutLabel}>To Win:</Text>
-              <Text style={styles.payoutAmount}>{isNaN(potentialWin) ? 0 : potentialWin} pts</Text>
-            </View>
-            <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitWager} disabled={isSubmitting}>
-              <Text style={styles.confirmButtonText}>{isSubmitting ? 'Processing...' : 'Lock It In'}</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* --- GUEST: NEW PITCH BET MODAL --- */}
-      <Modal visible={suggestModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 }]}>
-            <View style={styles.slipHeaderRow}>
-              <Text style={styles.slipTitle}>Pitch a Bet</Text>
-              <TouchableOpacity onPress={() => setSuggestModalVisible(false)}>
-                <Text style={styles.closeSlipText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={{ marginBottom: 15 }}>
-              <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                <TouchableOpacity
-                  style={[styles.scopePill, pitchEventScope === null && styles.scopePillActive]}
-                  onPress={() => setPitchEventScope(null)}
-                >
-                  <Text style={[styles.scopePillText, pitchEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
-                </TouchableOpacity>
-                {eventsList.map((e: any) => (
-                  <TouchableOpacity
-                    key={e.id}
-                    style={[styles.scopePill, pitchEventScope === e.id && styles.scopePillActive]}
-                    onPress={() => setPitchEventScope(e.id)}
-                  >
-                    <Text style={[styles.scopePillText, pitchEventScope === e.id && styles.scopePillTextActive]}>{e.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-
-            <View style={styles.typeSelectorRow}>
-              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'prop' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('prop')}>
-                <Text style={[styles.typeBtnText, pitchBetType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'over_under' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('over_under')}>
-                <Text style={[styles.typeBtnText, pitchBetType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'p2p' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('p2p')}>
-                <Text style={[styles.typeBtnText, pitchBetType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleTogglePitchBetType('blind')}>
-                <Text style={[styles.typeBtnText, pitchBetType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {pitchBetType === 'blind' ? (
-                <>
-                  <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                  <TextInput style={styles.p2pInput} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
-
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
-                      <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchBlindBase} onChangeText={(text) => setPitchBlindBase(sanitizeNumber(text))} placeholder="100" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput
-                        style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
-                        keyboardType="decimal-pad"
-                        value={pitchBlindMultiplier}
-                        onChangeText={updatePitchBlindMultiplier}
-                      />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <TextInput
-                        style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
-                        keyboardType="number-pad"
-                        value={pitchBlindPercent}
-                        onChangeText={updatePitchBlindPercent}
-                      />
-                    </View>
-                  </View>
-
-                  {(() => {
-                    const base = parseFloat(pitchBlindBase) || 0;
-                    const multi = parseFloat(pitchBlindMultiplier) || 0;
-                    const riskA = Math.trunc(base);
-                    const riskB = Math.trunc((base * multi) - base);
-                    const maxRisk = Math.max(riskA, riskB);
-                    
-                    const currentBalance = walletBalance || 0;
-                    const isOverleveraged = maxRisk > currentBalance;
-                    const pot = Math.trunc(base * multi);
-
-                    return (
-                      <View style={[styles.mathBox, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: isOverleveraged ? 'rgba(255, 68, 68, 0.05)' : 'rgba(187, 134, 252, 0.05)' }]}>
-                        <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
-                          {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'How Your Bid Shapes the Market'}
-                        </Text>
-                        
-                        <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
-                          You are establishing the baseline odds at <Text style={{color: '#fff', fontWeight: 'bold'}}>{pitchBlindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+                      <View style={[styles.previewContainer, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: 'rgba(187, 134, 252, 0.05)', padding: 15 }]}>
+                        <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>
+                          {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'Potential Outcomes (Estimates*)'}
                         </Text>
 
-                        {/* --- SCENARIO A --- */}
-                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
-                          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario A: You secure {pitchOptionA || 'Team A'}</Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • You Risk: <Text style={{color: (isOverleveraged && riskA > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                        <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 15 }}>
+                          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 12 }}>If you bid LOWER (You get {sideA}):</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{ color: '#fff' }}>{baseAmt} pts</Text></Text>
+                          <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
                         </View>
 
-                        {/* --- SCENARIO B --- */}
                         <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
-                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario B: You are pushed to {pitchOptionB || 'Team B'}</Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • You Risk: <Text style={{color: (isOverleveraged && riskB > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold'}}>{riskB} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
-                            • Challenger Risks: <Text style={{color: '#fff', fontWeight: 'bold'}}>{riskA} pts</Text>
-                          </Text>
-                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                          <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 12 }}>If you bid HIGHER (You get {sideB}):</Text>
+                          <Text style={{ color: '#a0a0a0', fontSize: 12 }}>Risk: <Text style={{ color: isOverleveraged ? '#ff4444' : '#fff', fontWeight: isOverleveraged ? 'bold' : 'normal' }}>{estUnderdogRisk} pts</Text></Text>
+                          <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: 'bold' }}>Payout: ~{estTotalPot} pts</Text>
                         </View>
 
-                        {isOverleveraged ? (
-                          <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
-                            You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
-                          </Text>
-                        ) : (
-                          <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
-                            *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+                        {isOverleveraged && (
+                          <Text style={{ color: '#ff4444', fontSize: 10, marginTop: 10, textAlign: 'center', fontWeight: 'bold' }}>
+                            You need {maxPossibleRisk - currentBalance} more points to cover this bid.
                           </Text>
                         )}
                       </View>
-                    );
-                  })()}
-                </>
-              ) : pitchBetType === 'p2p' ? (
-                <>
-                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                  <TextInput style={styles.p2pInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
 
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
-                  </View>
+                      <TouchableOpacity
+                        style={[styles.confirmButton, { backgroundColor: isOverleveraged ? '#444' : '#BB86FC' }, isSubmitting && { opacity: 0.7 }]}
+                        onPress={submitBlindBid}
+                        disabled={isSubmitting || isOverleveraged}
+                      >
+                        <Text style={styles.confirmButtonText}>{isSubmitting ? 'Locking...' : 'Lock In Blind Bid'}</Text>
+                      </TouchableOpacity>
 
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk</Text>
-                      <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={(text) => setPitchWager(sanitizeNumber(text))} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
-                    </View>
-                  </View>
-
-                  <View style={styles.mathBox}>
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
-                      Side A Risks: <Text style={{color: '#fff'}}>{Math.trunc(parseFloat(pitchWager) || 0)} pts</Text>
-                    </Text>
-                    
-                    <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
-                      Side B Must Risk: <Text style={{color: '#fff'}}>{Math.max(0, Math.trunc(((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)) - (parseFloat(pitchWager) || 0)))} pts</Text>
-                    </Text>
-                    
-                    <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
-                      Total Pot: {Math.trunc((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))} pts
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Question</Text>
-                  <TextInput style={styles.p2pInput} placeholder={pitchBetType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
-
-                  <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
-                  {pitchOptions.map((opt) => (
-                    <View key={opt.id} style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                      <TextInput
-                        style={[
-                          styles.p2pInput,
-                          { flex: 1, minWidth: 0, marginBottom: 0, paddingHorizontal: 10, fontSize: 14 },
-                          pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' }
-                        ]}
-                        placeholder="e.g., William"
-                        placeholderTextColor="#666"
-                        value={opt.label}
-                        onChangeText={(text) => updatePitchOption(opt.id, 'label', text)}
-                        editable={pitchBetType !== 'over_under'}
-                      />
-                      <TextInput style={[styles.p2pInput, { flex: 0.4, minWidth: 0, marginBottom: 0, paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
-                    </View>
-                  ))}
-
-                  {pitchBetType === 'prop' && (
-                    <TouchableOpacity style={{ backgroundColor: '#2a2a2a', padding: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#444', marginTop: 10 }} onPress={handleAddPitchOption}>
-                      <Text style={{ color: '#00D084', fontWeight: 'bold' }}>+ Add Another Option</Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
-            </ScrollView>
-
-            {(() => {
-              let isOverleveraged = false;
-              const currentBalance = walletBalance || 0;
-
-              if (pitchBetType === 'p2p') {
-                isOverleveraged = Math.trunc(parseFloat(pitchWager) || 0) > currentBalance;
-              } else if (pitchBetType === 'blind') {
-                const base = parseFloat(pitchBlindBase) || 0;
-                const multi = parseFloat(pitchBlindMultiplier) || 0;
-                isOverleveraged = Math.max(Math.trunc(base), Math.trunc((base * multi) - base)) > currentBalance;
-              }
-
-              return (
-                <TouchableOpacity 
-                  style={[styles.confirmButton, { marginTop: 20 }, (isSubmitting || isOverleveraged) && { opacity: 0.5, backgroundColor: '#444' }]} 
-                  onPress={handleSubmitPitch} 
-                  disabled={isSubmitting || isOverleveraged}
-                >
-                  <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending to Host...' : 'Submit Pitch'}</Text>
-                </TouchableOpacity>
-              );
-            })()}
+                      <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setBlindModalVisible(false)}>
+                        <Text style={styles.closeSlipText}>Cancel</Text>
+                      </TouchableOpacity>
+                    </>
+                  );
+                })()}
+              </View>
+            </View>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
 
-      {/* --- MY BETS (LIVE RECEIPTS) MODAL --- */}
+        {/* --- SHARE MODAL --- */}
+        <Modal visible={shareModalVisible} transparent={true} animationType="fade">
+          <View style={styles.centeredModalOverlay}>
+            <View style={styles.shareModalContainer}>
+              <Text style={styles.shareModalTitle}>Invite Players</Text>
+              <Text style={styles.shareModalSub}>Give this code to your friends so they can join the action.</Text>
+              <View style={styles.codeDisplayBox}>
+                <Text style={styles.hugeCodeText}>{joinCode}</Text>
+              </View>
+              <TouchableOpacity style={styles.copyButton} onPress={copyToClipboard}>
+                <Text style={styles.copyButtonText}>📋 Copy Code</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShareModalVisible(false)}>
+                <Text style={styles.closeModalText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* --- BET SLIP MODAL (HOUSE BETS) --- */}
+        <Modal visible={modalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={styles.betSlipContainer}>
+              <View style={styles.slipHeaderRow}>
+                <Text style={styles.slipTitle}>Bet Slip</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
+              </View>
+              {selectedBet && selectedOption && (
+                <View style={styles.slipDetails}>
+                  <Text style={styles.slipQuestion}>{selectedBet.question}</Text>
+                  <View style={styles.slipPickRow}>
+                    <Text style={styles.slipPickLabel}>Pick: <Text style={{ color: '#fff' }}>{selectedOption.label}</Text></Text>
+                    <Text style={styles.slipPickOdds}>{selectedOption.multiplier}x</Text>
+                  </View>
+                </View>
+              )}
+              <View style={styles.wagerInputRow}>
+                <Text style={styles.wagerLabel}>Risk:</Text>
+                <TextInput style={styles.wagerInput} keyboardType="numeric" placeholder="0" placeholderTextColor="#666" value={wagerAmount} onChangeText={setWagerAmount} autoFocus />
+              </View>
+              <View style={styles.payoutRow}>
+                <Text style={styles.payoutLabel}>To Win:</Text>
+                <Text style={styles.payoutAmount}>{isNaN(potentialWin) ? 0 : potentialWin} pts</Text>
+              </View>
+              <TouchableOpacity style={[styles.confirmButton, isSubmitting && { opacity: 0.7 }]} onPress={submitWager} disabled={isSubmitting}>
+                <Text style={styles.confirmButtonText}>{isSubmitting ? 'Processing...' : 'Lock It In'}</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* --- GUEST: NEW PITCH BET MODAL --- */}
+        <Modal visible={suggestModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 25 }]}>
+              <View style={styles.slipHeaderRow}>
+                <Text style={styles.slipTitle}>Pitch a Bet</Text>
+                <TouchableOpacity onPress={() => setSuggestModalVisible(false)}>
+                  <Text style={styles.closeSlipText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginBottom: 15 }}>
+                <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                  <TouchableOpacity
+                    style={[styles.scopePill, pitchEventScope === null && styles.scopePillActive]}
+                    onPress={() => setPitchEventScope(null)}
+                  >
+                    <Text style={[styles.scopePillText, pitchEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
+                  </TouchableOpacity>
+                  {eventsList.map((e: any) => (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={[styles.scopePill, pitchEventScope === e.id && styles.scopePillActive]}
+                      onPress={() => setPitchEventScope(e.id)}
+                    >
+                      <Text style={[styles.scopePillText, pitchEventScope === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.typeSelectorRow}>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'prop' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('prop')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'over_under' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('over_under')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'p2p' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('p2p')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleTogglePitchBetType('blind')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                {pitchBetType === 'blind' ? (
+                  <>
+                    <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                    <TextInput style={styles.p2pInput} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
+                        <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchBlindBase} onChangeText={(text) => setPitchBlindBase(sanitizeNumber(text))} placeholder="100" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
+                        <TextInput
+                          style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
+                          keyboardType="decimal-pad"
+                          value={pitchBlindMultiplier}
+                          onChangeText={updatePitchBlindMultiplier}
+                        />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
+                        <TextInput
+                          style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
+                          keyboardType="number-pad"
+                          value={pitchBlindPercent}
+                          onChangeText={updatePitchBlindPercent}
+                        />
+                      </View>
+                    </View>
+
+                    {(() => {
+                      const base = parseFloat(pitchBlindBase) || 0;
+                      const multi = parseFloat(pitchBlindMultiplier) || 0;
+                      const riskA = Math.trunc(base);
+                      const riskB = Math.trunc((base * multi) - base);
+                      const maxRisk = Math.max(riskA, riskB);
+
+                      const currentBalance = walletBalance || 0;
+                      const isOverleveraged = maxRisk > currentBalance;
+                      const pot = Math.trunc(base * multi);
+
+                      return (
+                        <View style={[styles.mathBox, { borderColor: isOverleveraged ? '#ff4444' : '#BB86FC', backgroundColor: isOverleveraged ? 'rgba(255, 68, 68, 0.05)' : 'rgba(187, 134, 252, 0.05)' }]}>
+                          <Text style={{ color: isOverleveraged ? '#ff4444' : '#BB86FC', fontSize: 15, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }}>
+                            {isOverleveraged ? '⚠️ INSUFFICIENT BALANCE' : 'How Your Bid Shapes the Market'}
+                          </Text>
+
+                          <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 15, lineHeight: 18, textAlign: 'center' }}>
+                            You are establishing the baseline odds at <Text style={{ color: '#fff', fontWeight: 'bold' }}>{pitchBlindMultiplier || '0'}x</Text>. Assuming the final averaged odds land near your bid, here is the breakdown:
+                          </Text>
+
+                          {/* --- SCENARIO A --- */}
+                          <View style={{ borderLeftWidth: 3, borderLeftColor: '#00D084', paddingLeft: 12, marginBottom: 20 }}>
+                            <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario A: You secure {pitchOptionA || 'Team A'}</Text>
+                            <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                              • You Risk: <Text style={{ color: (isOverleveraged && riskA > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold' }}>{riskA} pts</Text>
+                            </Text>
+                            <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                              • Challenger Risks: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{riskB} pts</Text>
+                            </Text>
+                            <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                          </View>
+
+                          {/* --- SCENARIO B --- */}
+                          <View style={{ borderLeftWidth: 3, borderLeftColor: '#ff4444', paddingLeft: 12 }}>
+                            <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 14, marginBottom: 6 }}>Scenario B: You are pushed to {pitchOptionB || 'Team B'}</Text>
+                            <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                              • You Risk: <Text style={{ color: (isOverleveraged && riskB > currentBalance) ? '#ff4444' : '#fff', fontWeight: 'bold' }}>{riskB} pts</Text>
+                            </Text>
+                            <Text style={{ color: '#a0a0a0', fontSize: 13, marginBottom: 3 }}>
+                              • Challenger Risks: <Text style={{ color: '#fff', fontWeight: 'bold' }}>{riskA} pts</Text>
+                            </Text>
+                            <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
+                          </View>
+
+                          {isOverleveraged ? (
+                            <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
+                              You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
+                            </Text>
+                          ) : (
+                            <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
+                              *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })()}
+                  </>
+                ) : pitchBetType === 'p2p' ? (
+                  <>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                    <TextInput style={styles.p2pInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk</Text>
+                        <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={(text) => setPitchWager(sanitizeNumber(text))} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
+                        <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
+                        <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
+                      </View>
+                    </View>
+
+                    <View style={styles.mathBox}>
+                      <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                        Side A Risks: <Text style={{ color: '#fff' }}>{Math.trunc(parseFloat(pitchWager) || 0)} pts</Text>
+                      </Text>
+
+                      <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
+                        Side B Must Risk: <Text style={{ color: '#fff' }}>{Math.max(0, Math.trunc(((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0)) - (parseFloat(pitchWager) || 0)))} pts</Text>
+                      </Text>
+
+                      <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: 'bold', marginTop: 5 }}>
+                        Total Pot: {Math.trunc((parseFloat(pitchWager) || 0) * (parseFloat(pitchMultiplier) || 0))} pts
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Question</Text>
+                    <TextInput style={styles.p2pInput} placeholder={pitchBetType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
+                    {pitchOptions.map((opt) => (
+                      <View key={opt.id} style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                        <TextInput
+                          style={[
+                            styles.p2pInput,
+                            { flex: 3, marginBottom: 0, paddingHorizontal: 10, fontSize: 15 },
+                            pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' }
+                          ]}
+                          placeholder="e.g., William"
+                          placeholderTextColor="#666"
+                          value={opt.label}
+                          onChangeText={(text) => updatePitchOption(opt.id, 'label', text)}
+                          editable={pitchBetType !== 'over_under'}
+                        />
+                        <TextInput style={[styles.p2pInput, { flex: 2, marginBottom: 0, paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
+                      </View>
+                    ))}
+
+                    {pitchBetType === 'prop' && (
+                      <TouchableOpacity style={{ backgroundColor: '#2a2a2a', padding: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: '#444', marginTop: 10 }} onPress={handleAddPitchOption}>
+                        <Text style={{ color: '#00D084', fontWeight: 'bold' }}>+ Add Another Option</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+
+              {(() => {
+                let isOverleveraged = false;
+                const currentBalance = walletBalance || 0;
+
+                if (pitchBetType === 'p2p') {
+                  isOverleveraged = Math.trunc(parseFloat(pitchWager) || 0) > currentBalance;
+                } else if (pitchBetType === 'blind') {
+                  const base = parseFloat(pitchBlindBase) || 0;
+                  const multi = parseFloat(pitchBlindMultiplier) || 0;
+                  isOverleveraged = Math.max(Math.trunc(base), Math.trunc((base * multi) - base)) > currentBalance;
+                }
+
+                return (
+                  <TouchableOpacity
+                    style={[styles.confirmButton, { marginTop: 20 }, (isSubmitting || isOverleveraged) && { opacity: 0.5, backgroundColor: '#444' }]}
+                    onPress={handleSubmitPitch}
+                    disabled={isSubmitting || isOverleveraged}
+                  >
+                    <Text style={styles.confirmButtonText}>{isSubmitting ? 'Sending to Host...' : 'Submit Pitch'}</Text>
+                  </TouchableOpacity>
+                );
+              })()}
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* --- MY BETS (LIVE RECEIPTS) MODAL --- */}
       </KeyboardAvoidingView>
     </View>
   );
@@ -1299,7 +1301,7 @@ const styles = StyleSheet.create({
   navPillMyBets: { backgroundColor: 'rgba(52, 152, 219, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#3498db' },
   navPillMyBetsText: { color: '#3498db', fontWeight: 'bold', fontSize: 14 },
   pitchButton: { backgroundColor: '#00D084', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, shadowColor: '#00D084', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
-  pitchButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 }, 
+  pitchButtonText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
 
   betCard: { backgroundColor: '#1e1e1e', borderRadius: 12, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
   betQuestion: { fontSize: 18, color: '#fff', fontWeight: 'bold', marginBottom: 15 },
@@ -1313,15 +1315,15 @@ const styles = StyleSheet.create({
   statusBadge: { paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, height: 22, justifyContent: 'center' },
   statusText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
 
-  bottomNavBar: { 
-    flexDirection: 'row', 
-    backgroundColor: '#1e1e1e', 
-    borderTopWidth: 1, 
-    borderTopColor: '#333', 
-    marginHorizontal: -15, 
-    marginBottom: -15, 
+  bottomNavBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1e1e1e',
+    borderTopWidth: 1,
+    borderTopColor: '#333',
+    marginHorizontal: -15,
+    marginBottom: -15,
     // 🚨 THE FIX: 25 for iOS, 15 for Android, 0 for Web
-    paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'android' ? 0 : 0 
+    paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'android' ? 0 : 0
   },
   sectionHeader: { fontSize: 14, fontWeight: 'bold', color: '#a0a0a0', marginBottom: 15, marginTop: 10, textTransform: 'uppercase' },
   emptyText: { color: '#a0a0a0', textAlign: 'center', marginTop: 30, fontSize: 16 },
@@ -1336,15 +1338,15 @@ const styles = StyleSheet.create({
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
   modalOverlayCenter: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.8)', padding: 20 },
-  modalContent: { 
-    backgroundColor: '#1e1e1e', 
-    padding: 25, 
-    width: '100%', 
-    
+  modalContent: {
+    backgroundColor: '#1e1e1e',
+    padding: 25,
+    width: '100%',
+
     // Round the top corners
-    borderTopLeftRadius: 25, 
+    borderTopLeftRadius: 25,
     borderTopRightRadius: 25,
-    
+
     // Keep the bottom padding so buttons aren't blocked by the home bar
     paddingBottom: Platform.OS === 'ios' ? 40 : Platform.OS === 'android' ? 35 : 25,
   },
@@ -1379,7 +1381,7 @@ const styles = StyleSheet.create({
   scopePillTextActive: { color: '#000' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
-  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10, minWidth: 0 },
+  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
 
   shareModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
