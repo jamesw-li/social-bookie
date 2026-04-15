@@ -7,7 +7,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 import HostEventController, { HostEvent } from '../components/HostEventController';
+import HostBetController, { HostBet } from '../components/HostBetController';
 import EventFormModal from '../components/EventFormModal';
+import GradeModal from '../components/GradeModal';
 import LedgerTab from '../components/LedgerTab';
 
 export default function HostScreen({ navigation }: any) {
@@ -107,6 +109,14 @@ export default function HostScreen({ navigation }: any) {
     return g ? g.id : null;
   };
 
+  // Initialize drillDownEventId to Global once events are loaded
+  useEffect(() => {
+    if (!drillDownEventId && eventsList.length > 0) {
+      const gId = getGlobalEventId();
+      if (gId) setDrillDownEventId(gId);
+    }
+  }, [eventsList, drillDownEventId]);
+
   useEffect(() => {
     fetchHostData();
     
@@ -137,16 +147,16 @@ export default function HostScreen({ navigation }: any) {
     });
 
     const proposalSub = supabase.channel('public:guest_proposals')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData(undefined, true)).subscribe();
 
     const pitchSub = supabase.channel('public:p2p_prop_bets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => fetchHostData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => fetchHostData(undefined, true)).subscribe();
 
     const blindSub = supabase.channel('public:blind_matchups_host')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => fetchHostData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => fetchHostData(undefined, true)).subscribe();
 
     const betsSub = supabase.channel('public:bets_host')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => fetchHostData()).subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => fetchHostData(undefined, true)).subscribe();
 
     AsyncStorage.getItem('campaignJoinCode').then(code => setCampaignJoinCode(code || ''));
 
@@ -203,32 +213,45 @@ export default function HostScreen({ navigation }: any) {
 
       setActiveEventId(targetEventId);
 
-      // Initialize drillDownEventId to Global if not set
-      if (!drillDownEventId) {
-        const globalEvent = eventsDataList.find((e: any) => e.name === 'Global');
-        if (globalEvent) {
-          setDrillDownEventId(globalEvent.id);
-        }
-      }
 
       // 1. Participants
       const { data: pData } = await supabase.from('campaign_participants').select('user_id, role, users(display_name)').eq('campaign_id', campaignId);
       setParticipants(pData ?? []);
 
-      // 2. Fetch Regular House Bets (Active)
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, event_id, bet_options!bet_options_bet_id_fkey ( id, label )`).eq('campaign_id', campaignId).in('status', ['open', 'locked', 'graded']);
+      // 2. Fetch Regular House Bets (Active & History)
+      const { data: betsData } = await supabase
+        .from('bets')
+        .select(`id, question, status, event_id, created_at, bet_options!bet_options_bet_id_fkey ( id, label )`)
+        .eq('campaign_id', campaignId)
+        .in('status', ['open', 'locked', 'graded', 'canceled']);
 
-      // 3. Fetch Approved P2P Bets (Active)
-      const { data: approvedP2P } = await supabase.from('p2p_prop_bets').select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)').eq('campaign_id', campaignId).in('status', ['open', 'locked']);
+      // 3. Fetch Approved P2P Bets (Active & History)
+      const { data: approvedP2P } = await supabase
+        .from('p2p_prop_bets')
+        .select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)')
+        .eq('campaign_id', campaignId)
+        .in('status', ['open', 'locked', 'resolved', 'canceled']);
 
-      // 4. Fetch Blind Matchups (Active)
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', campaignId).in('status', ['open', 'matched']);
+      // 4. Fetch Blind Matchups (Active & History)
+      const { data: blindData } = await supabase
+        .from('blind_matchups')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .in('status', ['open', 'matched', 'resolved', 'canceled']);
 
-      const safeBets = betsData ?? [];
-      const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true }));
-      const safeBlind = (blindData ?? []).map(b => ({ ...b, isBlind: true }));
+      const globalId = eventsDataList.find((e: any) => e.name === 'Global')?.id;
+      const safeBets = (betsData ?? []).map(b => ({ ...b, event_id: b.event_id || globalId }));
+      const safeP2P = (approvedP2P ?? []).map(p => ({ ...p, isP2P: true, event_id: p.event_id || globalId }));
+      const safeBlind = (blindData ?? []).map(b => ({ ...b, isBlind: true, event_id: b.event_id || globalId }));
       const allBets = [...safeBlind, ...safeP2P, ...safeBets];
-      setBets(allBets.sort((a, b) => (a.event_id === null ? -1 : (b.event_id === null ? 1 : 0))));
+      
+      // Sort by creation time to keep order stable, fallback to ID for deterministic sorting
+      setBets(allBets.sort((a, b) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      }));
 
       // 5. Fetch Inbox 1: Ideas
       const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').eq('campaign_id', campaignId).eq('status', 'pending');
@@ -499,6 +522,41 @@ export default function HostScreen({ navigation }: any) {
   // ==========================================
   // --- BET MANAGEMENT ACTIONS ---
   // ==========================================
+  async function handleVoidBet(betId: string) {
+    const targetBet = bets.find(b => b.id === betId);
+    if (!targetBet) return;
+    const title = 'Void & Refund Bet?';
+    const msg = 'Keep the record but refund all points to players?';
+
+    const executeVoid = async () => {
+      try {
+        if (targetBet.isP2P) {
+          const { error } = await supabase.rpc('void_p2p_bet_and_refund', { p_bet_id: betId });
+          if (error) throw error;
+        } else if (targetBet.isBlind) {
+          const { error } = await supabase.rpc('void_blind_match_and_refund', { p_matchup_id: betId });
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.rpc('void_bet_and_refund', { p_bet_id: betId });
+          if (error) throw error;
+        }
+        fetchHostData();
+      } catch (error: any) {
+        if (Platform.OS === 'web') window.alert(error.message);
+        else Alert.alert('Error Voiding Bet', error.message);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`${title}\n\n${msg}`)) executeVoid();
+    } else {
+      Alert.alert(title, msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Void & Refund', style: 'destructive', onPress: executeVoid }
+      ]);
+    }
+  }
+
   function openGradeModal(bet: any) {
     if (bet.isP2P && (!bet.side_a_user_id || !bet.side_b_user_id)) {
       const msg = 'Both sides of this Prop Challenge must be claimed before it can be graded.\n\nYou can Re-Open it to allow claims, or Trash it to refund the lone player.';
@@ -527,7 +585,7 @@ export default function HostScreen({ navigation }: any) {
         const table = targetBet?.isP2P ? 'p2p_prop_bets' : targetBet?.isBlind ? 'blind_matchups' : 'bets';
         await supabase.from(table).update({ status: newStatus }).eq('id', betId);
       }
-      fetchHostData();
+      fetchHostData(activeEventId, true); // Silent refresh
     } catch (error: any) {
       Platform.OS === 'web' ? window.alert(error.message) : Alert.alert('Error', error.message);
     }
@@ -759,17 +817,17 @@ export default function HostScreen({ navigation }: any) {
 
   const renderBetsView = () => {
     const globalId = getGlobalEventId();
-    // Safety: ensure drillDownEventId is set if we somehow arrived here with null
     const currentFilterId = drillDownEventId || globalId;
-    const openBets = bets.filter(b => b.status === 'open');
+    // Unified management: show all bets except pending ideas
+    const activeBets = bets.filter(b => ['open', 'locked', 'matched', 'graded', 'resolved', 'canceled'].includes(b.status));
     
     return (
       <View style={styles.subViewContainer}>
         <View style={styles.subViewHeader}>
-          <Text style={styles.subViewTitle}>Active Bets</Text>
+          <Text style={styles.subViewTitle}>Manage Bets</Text>
           <TouchableOpacity 
             style={styles.addBetBtnSmall} 
-            onPress={() => { setNewQuestion(''); setHostEventScope(drillDownEventId || globalId); setCreateModalVisible(true); }}
+            onPress={() => { setNewQuestion(''); setHostEventScope(currentFilterId); setCreateModalVisible(true); }}
           >
             <Text style={styles.addBetBtnTextSmall}>+ Push Bet</Text>
           </TouchableOpacity>
@@ -796,83 +854,27 @@ export default function HostScreen({ navigation }: any) {
           </ScrollView>
         </View>
 
-        {openBets.filter(b => b.event_id === currentFilterId).map(item => (
-          <View key={item.id} style={styles.betCard}>
-            <View style={styles.betCardHeader}>
-              <View>
-                {item.isBlind && <Text style={styles.typeBadgeBlind}>🤝 BLIND MATCH</Text>}
-                {item.isP2P && <Text style={styles.typeBadgeP2P}>🥊 P2P PROP</Text>}
-                <Text style={styles.betQuestion}>{item.question}</Text>
-              </View>
-              <Text style={styles.statusBadgeOpen}>OPEN</Text>
-            </View>
-            <View style={styles.betActionRow}>
-              {!item.isBlind && (
-                <TouchableOpacity style={styles.actionBtn} onPress={() => toggleBetStatus(item.id, 'locked')}>
-                  <Text style={styles.actionBtnText}>🔒 Lock</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleDeleteBet(item.id)}>
-                <Text style={styles.actionBtnTextTrash}>🗑️ Trash</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  const renderGradingView = () => {
-    const globalId = getGlobalEventId();
-    const currentFilterId = drillDownEventId || globalId;
-    const readyToGrade = bets.filter(b => b.status === 'locked' || b.status === 'matched');
-
-    return (
-      <View style={styles.subViewContainer}>
-        <View style={{ marginBottom: 20 }}>
-          <Text style={styles.filterLabel}>Filter by Event:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-            <TouchableOpacity
-              style={[styles.scopePill, drillDownEventId === globalId && styles.scopePillActive]}
-              onPress={() => setDrillDownEventId(globalId)}
-            >
-              <Text style={[styles.scopePillText, drillDownEventId === globalId && styles.scopePillTextActive]}>🌐 Global</Text>
-            </TouchableOpacity>
-            {eventsList.map((e: any) => (
-              <TouchableOpacity
-                key={e.id}
-                style={[styles.scopePill, drillDownEventId === e.id && styles.scopePillActive]}
-                onPress={() => setDrillDownEventId(e.id)}
-              >
-                <Text style={[styles.scopePillText, drillDownEventId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {readyToGrade.filter(b => b.event_id === currentFilterId).length > 0 ? (
-          readyToGrade.filter(b => b.event_id === currentFilterId).map(item => (
-            <View key={item.id} style={styles.betCard}>
-              <Text style={styles.betQuestion}>{item.question}</Text>
-              <View style={styles.betActionRow}>
-                <TouchableOpacity 
-                  style={styles.actionBtnSecondary} 
-                  onPress={() => item.isBlind ? handleDeleteBet(item.id) : toggleBetStatus(item.id, 'open')}
-                >
-                  <Text style={styles.actionBtnTextSecondary}>{item.isBlind ? '🗑️ Trash' : '🔓 Unlock'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionBtnGrade} onPress={() => openGradeModal(item)}>
-                  <Text style={styles.actionBtnTextGrade}>✅ Grade</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {activeBets.filter(b => b.event_id === currentFilterId).length > 0 ? (
+          activeBets.filter(b => b.event_id === currentFilterId).map(item => (
+            <HostBetController
+              key={item.id}
+              bet={{
+                ...item,
+                event_name: eventsList.find((e: any) => e.id === item.event_id)?.name
+              } as any}
+              onStatusToggle={toggleBetStatus}
+              onGradeRequest={openGradeModal}
+              onDeleteRequest={() => handleDeleteBet(item.id)}
+              onRefundRequest={() => handleVoidBet(item.id)}
+            />
           ))
         ) : (
-          <Text style={styles.emptyText}>Nothing ready for grading in this view.</Text>
+          <Text style={styles.emptyText}>Nothing to manage for this event scope.</Text>
         )}
       </View>
     );
   };
+
 
   const renderPitchesView = () => {
     const hasData = proposals.length > 0 || pendingPitches.length > 0 || pendingHouseBets.length > 0 || pendingBlindBets.length > 0;
@@ -1000,8 +1002,7 @@ export default function HostScreen({ navigation }: any) {
   const renderDashboard = () => {
     const tiles = [
       { id: 'events', title: 'Manage Events', icon: '📅', color: '#00D084', desc: 'Timing & Status' },
-      { id: 'bets', title: 'Manage Bets', icon: '🎲', color: '#FFD700', desc: 'Lock & Publish' },
-      { id: 'grading', title: 'Manage Grading', icon: '✅', color: '#BB86FC', desc: 'Settle Outcomes' },
+      { id: 'bets', title: 'Manage Bets', icon: '🎲', color: '#FFD700', desc: 'Lock & Settle' },
       { id: 'pitches', title: 'Manage Pitches', icon: '📥', color: '#03DAC6', desc: 'Guest Ideas' },
       { id: 'participants', title: 'Manage Participants', icon: '👥', color: '#CF6679', desc: 'Roles & Ledger' },
       { id: 'campaign', title: 'Manage Campaign', icon: '⚙️', color: '#a0a0a0', desc: 'Settings & Nuke' },

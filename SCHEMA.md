@@ -50,12 +50,14 @@ Specific temporal instances within a campaign that house specific bets.
 ### `bets`
 Wagers created by the host or approved from guest pitches.
 - `id` (uuid, PK, Not Null)
+- `campaign_id` (uuid, Nullable) - Links to the top-level campaign *(Added in 013)*
 - `event_id` (uuid, Nullable)
 - `type` (text, Not Null) 
 - `question` (text, Not Null)
 - `status` (text, Nullable) - Default: `'open'`
 - `winning_option_id` (uuid, Nullable)
 - `creator_id` (uuid, Nullable)
+- `created_at` (timestamptz, Nullable) - Timestamp for chronological sorting *(Added in 013)*
 
 ### `bet_options`
 The available options/sides to take on a standard bet.
