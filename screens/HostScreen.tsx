@@ -1114,19 +1114,19 @@ export default function HostScreen({ navigation }: any) {
             <View style={{ marginBottom: 15 }}>
               <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                <TouchableOpacity 
-                  style={[styles.typeBtn, hostEventScope === null && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                <TouchableOpacity
+                  style={[styles.scopePill, hostEventScope === null && styles.scopePillActive]}
                   onPress={() => setHostEventScope(null)}
                 >
-                  <Text style={[styles.typeBtnText, hostEventScope === null && styles.typeBtnTextActive]}>🌐 Overall Campaign</Text>
+                  <Text style={[styles.scopePillText, hostEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
                 </TouchableOpacity>
                 {eventsList.map((e: any) => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={e.id}
-                    style={[styles.typeBtn, hostEventScope === e.id && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                    style={[styles.scopePill, hostEventScope === e.id && styles.scopePillActive]}
                     onPress={() => setHostEventScope(e.id)}
                   >
-                    <Text style={[styles.typeBtnText, hostEventScope === e.id && styles.typeBtnTextActive]}>{e.name}</Text>
+                    <Text style={[styles.scopePillText, hostEventScope === e.id && styles.scopePillTextActive]}>{e.name}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1166,25 +1166,22 @@ export default function HostScreen({ navigation }: any) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput 
-                        style={styles.input}
+                      <TextInput
+                        style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
                         keyboardType="decimal-pad"
                         value={blindMultiplier}
                         onChangeText={updateMultiplier}
                       />
                     </View>
-                    
+
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <TextInput 
-                          style={[styles.input, { flex: 1 }]}
-                          keyboardType="number-pad"
-                          value={blindPercent}
-                          onChangeText={updatePercent}
-                        />
-                        <Text style={{ color: '#fff', marginLeft: -30, marginRight: 15, fontWeight: 'bold' }}>%</Text>
-                      </View>
+                      <TextInput
+                        style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        value={blindPercent}
+                        onChangeText={updatePercent}
+                      />
                     </View>
                   </View>
                   
@@ -1265,14 +1262,11 @@ export default function HostScreen({ navigation }: any) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.label}>Odds (x)</Text>
-                      <TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} />
+                      <TextInput style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.label}>Win (%)</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <TextInput style={[styles.input, { flex: 1 }]} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} />
-                        <Text style={{ color: '#fff', position: 'absolute', right: 15, top: 15, fontWeight: 'bold' }}>%</Text>
-                      </View>
+                      <TextInput style={[styles.input, { paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} />
                     </View>
                   </View>
                   <View style={styles.mathBox}>
@@ -1305,30 +1299,26 @@ export default function HostScreen({ navigation }: any) {
                   <Text style={styles.label}>Options & Payouts</Text>
                   {newOptions.map((opt) => (
                     <View key={opt.id} style={styles.optionRow}>
-                      
-                      {/* 🚨 THE FIX: Added conditional styling to grey out the box! */}
-                      <TextInput 
+                      <TextInput
                         style={[
-                          styles.input, 
-                          { flex: 2, marginRight: 10, marginBottom: 0 },
+                          styles.input,
+                          { flex: 1, minWidth: 0, marginRight: 8, marginBottom: 0, paddingHorizontal: 10, fontSize: 14 },
                           betType === 'over_under' && { color: '#888', backgroundColor: '#2a2a2a', borderColor: '#222' }
-                        ]} 
-                        placeholder="e.g., William" 
-                        placeholderTextColor="#666" 
-                        value={opt.label} 
-                        onChangeText={(text) => updateOption(opt.id, 'label', text)} 
-                        editable={betType !== 'over_under'} 
+                        ]}
+                        placeholder="e.g., William"
+                        placeholderTextColor="#666"
+                        value={opt.label}
+                        onChangeText={(text) => updateOption(opt.id, 'label', text)}
+                        editable={betType !== 'over_under'}
                         selectTextOnFocus={betType !== 'over_under'}
                       />
-                      
-                      {/* 🚨 BONUS FIX: Added sanitizeNumber and decimal-pad to protect the Odds! */}
-                      <TextInput 
-                        style={[styles.input, { flex: 1, marginBottom: 0 }]} 
-                        keyboardType="decimal-pad" 
-                        placeholder="2.0" 
-                        placeholderTextColor="#666" 
-                        value={opt.odds} 
-                        onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))} 
+                      <TextInput
+                        style={[styles.input, { flex: 0.4, minWidth: 0, marginBottom: 0, paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]}
+                        keyboardType="decimal-pad"
+                        placeholder="2.0"
+                        placeholderTextColor="#666"
+                        value={opt.odds}
+                        onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))}
                       />
                     </View>
                   ))}
@@ -1462,6 +1452,10 @@ const styles = StyleSheet.create({
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4 },
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
   typeBtnActive: { backgroundColor: '#FFD700' },
+  scopePill: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', borderRadius: 20, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#444', marginRight: 8 },
+  scopePillActive: { backgroundColor: '#FFD700', borderColor: '#FFD700' },
+  scopePillText: { color: '#e0e0e0', fontWeight: '600', fontSize: 13 },
+  scopePillTextActive: { color: '#000' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' },
@@ -1484,7 +1478,7 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: '#a0a0a0', textAlign: 'center', marginBottom: 25, fontSize: 16 },
   closeText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   label: { color: '#fff', fontWeight: 'bold', marginBottom: 10, marginTop: 10 },
-  input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, padding: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15 },
+  input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15, minWidth: 0 },
   optionRow: { flexDirection: 'row', marginBottom: 10 },
   addOptionBtn: { alignItems: 'center', paddingVertical: 10, marginBottom: 20 },
   addOptionText: { color: '#00D084', fontWeight: 'bold' },

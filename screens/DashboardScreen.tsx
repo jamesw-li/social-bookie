@@ -258,8 +258,9 @@ export default function DashboardScreen({ route, navigation }: any) {
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
       if (wagersData) {
         const eventWagers = wagersData.filter((w: any) => !w.bets?.event_id || w.bets?.event_id === targetEventId);
-        setMyWagers(eventWagers.filter((w: any) => w.status === 'pending'));
-        setMyBets(eventWagers.reverse());
+        const activeWagers = eventWagers.filter((w: any) => w.status !== 'canceled');
+        setMyWagers(activeWagers.filter((w: any) => w.status === 'pending'));
+        setMyBets(activeWagers.reverse());
       }
       
       const { data: standingsData } = await supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false }); 
@@ -1015,19 +1016,19 @@ export default function DashboardScreen({ route, navigation }: any) {
             <View style={{ marginBottom: 15 }}>
               <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                <TouchableOpacity 
-                  style={[styles.typeBtn, pitchEventScope === null && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                <TouchableOpacity
+                  style={[styles.scopePill, pitchEventScope === null && styles.scopePillActive]}
                   onPress={() => setPitchEventScope(null)}
                 >
-                  <Text style={[styles.typeBtnText, pitchEventScope === null && styles.typeBtnTextActive]}>🌐 Overall Campaign</Text>
+                  <Text style={[styles.scopePillText, pitchEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
                 </TouchableOpacity>
                 {eventsList.map((e: any) => (
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     key={e.id}
-                    style={[styles.typeBtn, pitchEventScope === e.id && styles.typeBtnActive, { marginRight: 8, paddingHorizontal: 15 }]} 
+                    style={[styles.scopePill, pitchEventScope === e.id && styles.scopePillActive]}
                     onPress={() => setPitchEventScope(e.id)}
                   >
-                    <Text style={[styles.typeBtnText, pitchEventScope === e.id && styles.typeBtnTextActive]}>{e.name}</Text>
+                    <Text style={[styles.scopePillText, pitchEventScope === e.id && styles.scopePillTextActive]}>{e.name}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1066,25 +1067,22 @@ export default function DashboardScreen({ route, navigation }: any) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput 
-                        style={styles.p2pInput}
+                      <TextInput
+                        style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
                         keyboardType="decimal-pad"
                         value={pitchBlindMultiplier}
                         onChangeText={updatePitchBlindMultiplier}
                       />
                     </View>
-                    
+
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <TextInput 
-                          style={[styles.p2pInput, { flex: 1 }]}
-                          keyboardType="number-pad"
-                          value={pitchBlindPercent}
-                          onChangeText={updatePitchBlindPercent}
-                        />
-                        <Text style={{ color: '#fff', position: 'absolute', right: 15, top: 15, fontWeight: 'bold' }}>%</Text>
-                      </View>
+                      <TextInput
+                        style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
+                        keyboardType="number-pad"
+                        value={pitchBlindPercent}
+                        onChangeText={updatePitchBlindPercent}
+                      />
                     </View>
                   </View>
 
@@ -1163,14 +1161,11 @@ export default function DashboardScreen({ route, navigation }: any) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                      <TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
+                      <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <TextInput style={[styles.p2pInput, { flex: 1 }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
-                        <Text style={{ color: '#fff', position: 'absolute', right: 15, top: 15, fontWeight: 'bold' }}>%</Text>
-                      </View>
+                      <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
                     </View>
                   </View>
 
@@ -1195,21 +1190,20 @@ export default function DashboardScreen({ route, navigation }: any) {
 
                   <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
                   {pitchOptions.map((opt) => (
-                    <View key={opt.id} style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-                      <TextInput 
+                    <View key={opt.id} style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                      <TextInput
                         style={[
-                          styles.p2pInput, 
-                          { flex: 2, marginBottom: 0 },
-                          // 🚨 Adds a grey background and text color if it's locked!
-                          pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' } 
-                        ]} 
-                        placeholder="e.g., William" 
-                        placeholderTextColor="#666" 
-                        value={opt.label} 
-                        onChangeText={(text) => updatePitchOption(opt.id, 'label', text)} 
-                        editable={pitchBetType !== 'over_under'} 
+                          styles.p2pInput,
+                          { flex: 1, minWidth: 0, marginBottom: 0, paddingHorizontal: 10, fontSize: 14 },
+                          pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' }
+                        ]}
+                        placeholder="e.g., William"
+                        placeholderTextColor="#666"
+                        value={opt.label}
+                        onChangeText={(text) => updatePitchOption(opt.id, 'label', text)}
+                        editable={pitchBetType !== 'over_under'}
                       />
-                      <TextInput style={[styles.p2pInput, { flex: 1, marginBottom: 0 }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
+                      <TextInput style={[styles.p2pInput, { flex: 0.4, minWidth: 0, marginBottom: 0, paddingHorizontal: 8, fontSize: 14, textAlign: 'center' }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
                     </View>
                   ))}
 
@@ -1379,9 +1373,13 @@ const styles = StyleSheet.create({
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4, borderWidth: 1, borderColor: '#333' },
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
   typeBtnActive: { backgroundColor: '#FFD700' },
+  scopePill: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', borderRadius: 20, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#444', marginRight: 8 },
+  scopePillActive: { backgroundColor: '#FFD700', borderColor: '#FFD700' },
+  scopePillText: { color: '#e0e0e0', fontWeight: '600', fontSize: 13 },
+  scopePillTextActive: { color: '#000' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
-  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10 },
+  p2pInput: { backgroundColor: '#121212', borderWidth: 1, borderColor: '#333', borderRadius: 8, color: '#fff', fontSize: 18, paddingHorizontal: 15, height: 50, marginBottom: 10, minWidth: 0 },
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
 
   shareModalContainer: { backgroundColor: '#1e1e1e', padding: 25, borderRadius: 15, width: '85%', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
