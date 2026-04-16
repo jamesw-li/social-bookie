@@ -135,7 +135,7 @@ export default function HostScreen({ navigation }: any) {
         case 'events': return 'Manage Events';
         case 'bets': return 'Manage Bets';
         case 'grading': return 'Ready for Grading';
-        case 'pitches': return 'Master Inbox';
+        case 'pitches': return 'Manage Pitches';
         case 'participants': return 'Manage Participants';
         case 'campaign': return 'Campaign Settings';
         default: return 'Host Control';
@@ -1075,7 +1075,11 @@ export default function HostScreen({ navigation }: any) {
       
       return (
         <View key={`${pitch.sourceTable}-${pitch.id}`} style={styles.pitchCard}>
-          <View style={styles.pitchDetails}>
+          <TouchableOpacity 
+            style={styles.pitchDetails} 
+            onPress={() => handleEditUnifiedPitch(pitch)}
+            activeOpacity={0.7}
+          >
             <View style={styles.pitchHeaderRow}>
               <Text style={styles.pitchProposer}>👤 {pitch.proposer.toUpperCase()}</Text>
               <Text style={styles.pitchTime}>{new Date(pitch.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
@@ -1099,7 +1103,9 @@ export default function HostScreen({ navigation }: any) {
             {(pitch.type === 'p2p' || pitch.type === 'blind') && (
               <Text style={styles.pitchTypeTag}>🏷️ {pitch.type.toUpperCase()}</Text>
             )}
-          </View>
+
+            <Text style={styles.editHint}>Tap to edit</Text>
+          </TouchableOpacity>
 
           <View style={styles.pitchActions}>
             <View style={{ width: '100%', alignItems: 'flex-end', position: 'relative', zIndex: 10 }}>
@@ -1109,10 +1115,6 @@ export default function HostScreen({ navigation }: any) {
               
               {isMenuOpen && (
                 <View style={styles.pitchPopupMenu}>
-                  <TouchableOpacity style={styles.pitchMenuItem} onPress={() => { handleEditUnifiedPitch(pitch); }}>
-                    <Text style={styles.pitchMenuItemText}>✏️ Edit Pitch</Text>
-                  </TouchableOpacity>
-                  <View style={styles.pitchMenuDivider} />
                   <TouchableOpacity style={styles.pitchMenuItem} onPress={() => { handleRejectUnifiedPitch(pitch); setEditingPitch(null); }}>
                     <Text style={styles.pitchMenuItemRed}>🗑️ Delete Pitch</Text>
                   </TouchableOpacity>
@@ -1796,4 +1798,11 @@ const styles = StyleSheet.create({
   deleteCampaignBtn: { backgroundColor: 'transparent', padding: 20, borderRadius: 15, borderWidth: 1, borderColor: '#7f1d1d', marginBottom: 40 },
   deleteCampaignBtnText: { color: '#991b1b', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
   deleteCampaignBtnSub: { color: '#7f1d1d', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  editHint: {
+    color: '#444',
+    fontSize: 9,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 8,
+  },
 });
