@@ -258,7 +258,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         const fallbackEvent = eventsDataList.find((e: any) => e.status === 'live') || eventsDataList[0];
         if (fallbackEvent) {
           targetEventId = fallbackEvent.id;
-          setActiveEventSwitchId(targetEventId);
+          setActiveEventSwitchId(targetEventId as string);
         } else {
           return setLoading(false);
         }

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../supabase';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 import HostEventController, { HostEvent } from '../components/HostEventController';
@@ -74,6 +75,16 @@ export default function HostScreen({ navigation }: any) {
 
   const [activeView, setActiveView] = useState<'dashboard' | 'events' | 'bets' | 'grading' | 'pitches' | 'participants' | 'campaign'>('dashboard');
   const [drillDownEventId, setDrillDownEventId] = useState<string | null>(null);
+
+  async function copyToClipboard() {
+    if (!campaignJoinCode) return;
+    await Clipboard.setStringAsync(campaignJoinCode);
+    if (Platform.OS === 'web') {
+      window.alert('Copied! Room code copied to clipboard.');
+    } else {
+      Alert.alert('Copied!', 'Room code copied to clipboard. Send it to your friends!');
+    }
+  }
 
   // Sync Percent when Multiplier changes
   const updateMultiplier = (val: string) => {
@@ -219,7 +230,7 @@ export default function HostScreen({ navigation }: any) {
         const fallbackEvent = eventsDataList.find((e: any) => e.status === 'live') || eventsDataList[0];
         if (fallbackEvent) {
           targetEventId = fallbackEvent.id;
-          setActiveEventSwitchId(targetEventId);
+          setActiveEventSwitchId(targetEventId as string);
         } else {
           setLoading(false);
           return;
@@ -1089,6 +1100,32 @@ export default function HostScreen({ navigation }: any) {
     );
   };
 
+  const renderGradingView = () => {
+    const readyToGrade = bets.filter(b => b.status === 'locked');
+    return (
+      <View style={styles.subViewContainer}>
+        {readyToGrade.length > 0 ? (
+          readyToGrade.map(item => (
+            <HostBetController
+              key={item.id}
+              bet={{
+                ...item,
+                event_name: eventsList.find((e: any) => e.id === item.event_id)?.name
+              } as any}
+              onStatusToggle={toggleBetStatus}
+              onGradeRequest={openGradeModal}
+              onDeleteRequest={() => handleDeleteBet(item.id)}
+              onRefundRequest={() => handleVoidBet(item.id)}
+              onEditRequest={(bet) => handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' })}
+            />
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No bets are currently locked for grading.</Text>
+        )}
+      </View>
+    );
+  };
+
 
   const renderPitchesView = () => {
     const allPitches = getUnifiedPitches();
@@ -1229,9 +1266,10 @@ export default function HostScreen({ navigation }: any) {
     <View style={styles.subViewContainer}>
       <View style={styles.settingsGroup}>
         <Text style={styles.label}>Campaign Join Code</Text>
-        <View style={styles.codeRow}>
+        <TouchableOpacity style={styles.codeRow} onPress={copyToClipboard} activeOpacity={0.7}>
           <Text style={styles.joinCodeText}>{campaignJoinCode}</Text>
-        </View>
+          <Text style={{ color: '#00D084', fontSize: 10, marginTop: 8, fontWeight: 'bold' }}>📋 TAP TO COPY</Text>
+        </TouchableOpacity>
         <Text style={styles.joinCodeSub}>Players enter this to join your event.</Text>
       </View>
 
@@ -1600,9 +1638,6 @@ const styles = StyleSheet.create({
   queueContainer: { marginBottom: 25, backgroundColor: '#2a2a2a', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#FFD700' },
   inboxTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 15 },
   ideaCard: { backgroundColor: '#121212', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#333' },
-  pitchCard: { backgroundColor: '#121212', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10 },
-  pitchProposer: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' },
-  pitchQuestion: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
   pitchMathBox: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444', marginBottom: 15 },
   pitchCard: {
     backgroundColor: '#1E1E1E',
@@ -1756,6 +1791,7 @@ const styles = StyleSheet.create({
   modalSubtitle: { color: '#a0a0a0', textAlign: 'center', marginBottom: 25, fontSize: 16 },
   closeText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   label: { color: '#fff', fontWeight: 'bold', marginBottom: 10, marginTop: 10 },
+  inputGroup: { marginBottom: 20 },
   input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15 },
   optionRow: { 
     flexDirection: 'row', 
