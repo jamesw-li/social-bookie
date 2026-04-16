@@ -94,13 +94,6 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      {/* HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleExit}>
-          <Text style={styles.backButtonText}>← Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.gameOverText}>ARCHIVED EVENT</Text>
-      </View>
       
       <Text style={styles.title}>{campaignName}</Text>
 
@@ -231,7 +224,7 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 60 },
+  container: { flex: 1, backgroundColor: '#121212', paddingHorizontal: 20 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   backButton: { backgroundColor: '#2a2a2a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444' },
   backButtonText: { color: '#fff', fontWeight: 'bold' },

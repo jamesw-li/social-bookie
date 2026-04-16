@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { supabase } from '../supabase'; // Make sure this path is correct!
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function WelcomeScreen({ navigation }: any) {
   const [step, setStep] = useState<1 | 2>(1); // 1 = Room Code, 2 = Display Name
@@ -164,8 +165,12 @@ export default function WelcomeScreen({ navigation }: any) {
                 </TouchableOpacity>
                 
                 {/* A little back button just in case they typed the wrong code */}
-                <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setStep(1)} disabled={isLoading}>
-                  <Text style={{ color: '#666' }}>← Back</Text>
+                <TouchableOpacity 
+                   style={{ marginTop: 15, alignItems: 'center' }} 
+                   onPress={() => setStep(1)} 
+                   disabled={isLoading}
+                >
+                  <MaterialCommunityIcons name="chevron-left" size={32} color="#666" />
                 </TouchableOpacity>
               </>
             )}

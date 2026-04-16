@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
@@ -11,6 +12,7 @@ import HostBetController, { HostBet } from '../components/HostBetController';
 import EventFormModal from '../components/EventFormModal';
 import GradeModal from '../components/GradeModal';
 import LedgerTab from '../components/LedgerTab';
+import BackButton from '../components/BackButton';
 
 export default function HostScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
@@ -119,8 +121,10 @@ export default function HostScreen({ navigation }: any) {
 
   useEffect(() => {
     fetchHostData();
-    
-    // Header sync
+  }, []);
+
+  // Header sync - must be reactive to activeView
+  useLayoutEffect(() => {
     const getViewTitle = (view: string) => {
       switch(view) {
         case 'events': return 'Manage Events';
@@ -135,16 +139,22 @@ export default function HostScreen({ navigation }: any) {
 
     navigation.setOptions({
       title: getViewTitle(activeView),
-      headerLeft: activeView === 'dashboard' ? undefined : () => (
-        <TouchableOpacity 
-          onPress={() => setActiveView('dashboard')} 
-          style={{ marginRight: 20, padding: 5 }}
-        >
-          <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold' }}>← Back</Text>
-        </TouchableOpacity>
+      headerBackTitle: '',
+      headerLeft: () => (
+        <BackButton
+          onPress={() => {
+            if (activeView === 'dashboard') {
+              navigation.goBack();
+            } else {
+              setActiveView('dashboard');
+            }
+          }}
+        />
       ),
-      headerTintColor: '#FFD700'
     });
+  }, [navigation, activeView]);
+
+  useEffect(() => {
 
     const proposalSub = supabase.channel('public:guest_proposals')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData(undefined, true)).subscribe();
@@ -1079,8 +1089,8 @@ export default function HostScreen({ navigation }: any) {
           ) : (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                <TouchableOpacity onPress={() => setViewingPlayerLedger(false)} style={{ marginRight: 12 }}>
-                  <Text style={{ color: '#00D084', fontSize: 16 }}>← Back</Text>
+                <TouchableOpacity onPress={() => setViewingPlayerLedger(false)} style={{ marginRight: 12, marginLeft: -5 }}>
+                  <MaterialCommunityIcons name="chevron-left" size={32} color="#00D084" />
                 </TouchableOpacity>
                 <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}'s Ledger</Text>
               </View>

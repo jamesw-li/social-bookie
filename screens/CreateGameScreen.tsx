@@ -19,19 +19,6 @@ export default function CreateGameScreen({ navigation }: any) {
   const [startingBankroll, setStartingBankroll] = useState('10000');
   const [isLoading, setIsLoading] = useState(false);
   
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerTitle: '', // Keep header clear for body title
-      headerLeft: () => (
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={{ paddingVertical: 8, paddingLeft: 15, paddingRight: 10 }}
-        >
-          <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation]);
 
   const generateRoomCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

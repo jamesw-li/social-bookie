@@ -29,9 +29,6 @@ export default function SettingsScreen({ route, navigation }: any) {
   const [displayName, setDisplayName] = useState(currentName || '');
   const [isAnonymous, setIsAnonymous] = useState(false);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerShown: false });
-  }, [navigation]);
 
   useEffect(() => {
     async function loadUserInfo() {
@@ -134,14 +131,7 @@ export default function SettingsScreen({ route, navigation }: any) {
         }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ paddingTop: insets.top + 12, marginBottom: 28 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 16 }}
-          >
-            <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
-          </TouchableOpacity>
+        <View style={{ paddingTop: 20, marginBottom: 28 }}>
           <Text style={styles.pageTitle}>Settings</Text>
         </View>
 

@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
 import * as Clipboard from 'expo-clipboard';
@@ -12,9 +12,9 @@ import LedgerTab from '../components/LedgerTab';
 import ActionTab from '../components/ActionTab';
 import StandingsTab from '../components/StandingsTab';
 import MyBetsTab from '../components/MyBetsTab';
+import BackButton from '../components/BackButton';
 
 export default function DashboardScreen({ route, navigation }: any) {
-  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [eventsList, setEventsList] = useState<EventItem[]>([]);
   const [activeEventSwitchId, setActiveEventSwitchId] = useState('2');
@@ -152,6 +152,34 @@ export default function DashboardScreen({ route, navigation }: any) {
     const num = parseFloat(val);
     if (num > 0 && num <= 100) setBlindBid((100 / num).toFixed(2));
   };
+
+  // Sync native header with reactive state values
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <BackButton onPress={handleSwitchEvent} />
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 15 }}>
+          {userRole === 'host' && (
+            <View style={{ position: 'relative' }}>
+              <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
+                <Text style={styles.navPillHostText}>👑 Host</Text>
+              </TouchableOpacity>
+              {pendingApprovals > 0 && (
+                <View style={styles.badgeContainer}>
+                  <Text style={styles.badgeText}>{pendingApprovals > 9 ? '9+' : pendingApprovals}</Text>
+                </View>
+              )}
+            </View>
+          )}
+          <TouchableOpacity onPress={() => setActiveTab('ledger')} style={styles.walletBadge}>
+            <Text style={styles.walletText}>💰 {walletBalance.toLocaleString()}</Text>
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, userRole, walletBalance, pendingApprovals]);
 
   useEffect(() => {
     let walletSub: any;
@@ -783,36 +811,6 @@ export default function DashboardScreen({ route, navigation }: any) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
       >
-        {/* ── PERSISTENT WALLET HEADER ── */}
-        <View style={[styles.persistentHeader, { paddingTop: Math.max(insets.top, 15) }]}>
-          <TouchableOpacity style={styles.navPillLeave} onPress={handleSwitchEvent}>
-            <Text style={styles.navPillLeaveText}>← Back</Text>
-          </TouchableOpacity>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {userRole === 'host' && (
-              <TouchableOpacity style={styles.navPillShare} onPress={() => setShareModalVisible(true)}>
-                <Text style={styles.navPillShareText}>📤 Share</Text>
-              </TouchableOpacity>
-            )}
-            {userRole === 'host' && (
-              <View style={{ position: 'relative' }}>
-                <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
-                  <Text style={styles.navPillHostText}>👑 Host</Text>
-                </TouchableOpacity>
-                {pendingApprovals > 0 && (
-                  <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{pendingApprovals > 9 ? '9+' : pendingApprovals}</Text>
-                  </View>
-                )}
-              </View>
-            )}
-            <TouchableOpacity onPress={() => setActiveTab('ledger')} style={styles.walletBadge}>
-              <Text style={styles.walletText}>💰 {walletBalance.toLocaleString()}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* ── TAB CONTENT ── */}
         {activeTab === 'action' && (
           <ActionTab
@@ -1260,21 +1258,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: '#00D084', marginTop: 5, fontWeight: '600' },
   balanceText: { fontSize: 16, color: '#a0a0a0', marginTop: 5 },
 
-  /* ── Persistent Header ── */
-  persistentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingBottom: 12,
-    backgroundColor: '#121212',
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1e1e',
-  },
-  persistentHeaderLeft: {
-    flexDirection: 'column',
-    gap: 8,
-  },
   walletBadge: {
     backgroundColor: 'rgba(0, 208, 132, 0.1)',
     borderWidth: 1,
@@ -1296,8 +1279,6 @@ const styles = StyleSheet.create({
   navPillLeaveText: { color: '#00D084', fontWeight: '600', fontSize: 16 },
   navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
   navPillHostText: { color: '#FFD700', fontWeight: 'bold', fontSize: 14 },
-  navPillShare: { backgroundColor: 'rgba(0, 208, 132, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#00D084' },
-  navPillShareText: { color: '#00D084', fontWeight: 'bold', fontSize: 14 },
   navPillMyBets: { backgroundColor: 'rgba(52, 152, 219, 0.1)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#3498db' },
   navPillMyBetsText: { color: '#3498db', fontWeight: 'bold', fontSize: 14 },
   pitchButton: { backgroundColor: '#00D084', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 8, shadowColor: '#00D084', shadowOpacity: 0.3, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
@@ -1365,7 +1346,19 @@ const styles = StyleSheet.create({
   slipPickOdds: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   wagerInputRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   wagerLabel: { color: '#fff', fontSize: 18, marginRight: 15 },
-  wagerInput: { flex: 1, backgroundColor: '#121212', color: '#fff', fontSize: 24, fontWeight: 'bold', borderRadius: 8, padding: 15, borderWidth: 1, borderColor: '#333' },
+  wagerInput: { 
+    flex: 1, 
+    backgroundColor: '#121212', 
+    color: '#fff', 
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    borderRadius: 8, 
+    padding: 10, 
+    height: 50,
+    borderWidth: 1, 
+    borderColor: '#333',
+    textAlign: 'right'
+  },
   payoutRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
   payoutLabel: { color: '#a0a0a0', fontSize: 16 },
   payoutAmount: { color: '#00D084', fontSize: 20, fontWeight: 'bold' },

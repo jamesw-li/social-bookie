@@ -25,19 +25,6 @@ export default function HostAuthScreen({ route, navigation }: any) {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerTitle: '', // Keep header clear for body title
-      headerLeft: () => (
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()} 
-          style={{ paddingVertical: 8, paddingLeft: 15, paddingRight: 10 }}
-        >
-          <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
-        </TouchableOpacity>
-      ),
-    });
-  }, [navigation]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;

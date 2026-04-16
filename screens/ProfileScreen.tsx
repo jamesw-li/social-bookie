@@ -24,9 +24,6 @@ export default function ProfileScreen({ route, navigation }: any) {
   const [currentEmail, setCurrentEmail] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerShown: false });
-  }, [navigation]);
 
   useEffect(() => {
     async function checkUserStatus() {
@@ -141,14 +138,7 @@ export default function ProfileScreen({ route, navigation }: any) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ paddingTop: insets.top + 12 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 16 }}
-          >
-            <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
-          </TouchableOpacity>
+        <View style={{ paddingTop: 20 }}>
           <Text style={styles.pageTitle}>Profile</Text>
         </View>
 

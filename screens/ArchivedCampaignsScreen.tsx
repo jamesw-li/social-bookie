@@ -12,9 +12,6 @@ export default function ArchivedCampaignsScreen({ route, navigation }: any) {
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerShown: false });
-  }, [navigation]);
 
   useEffect(() => {
     fetchArchivedCampaigns();
@@ -76,14 +73,7 @@ export default function ArchivedCampaignsScreen({ route, navigation }: any) {
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 40, paddingHorizontal: 20 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View style={{ paddingTop: insets.top + 12, marginBottom: 24 }}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: 16 }}
-          >
-            <Text style={{ color: '#00D084', fontWeight: '600', fontSize: 16 }}>← Back</Text>
-          </TouchableOpacity>
+        <View style={{ paddingTop: 20, marginBottom: 24 }}>
           <Text style={styles.pageTitle}>Hall of Fame</Text>
           <Text style={{ color: '#a0a0a0', fontSize: 14, marginTop: 4 }}>
             Your completed campaigns

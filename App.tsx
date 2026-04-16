@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import BackButton from './components/BackButton';
 import WelcomeScreen from './screens/WelcomeScreen';
 import CampaignScreen from './screens/CampaignScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -71,13 +72,15 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={MyDarkTheme}>
-        <Stack.Navigator 
+        <Stack.Navigator
           initialRouteName={initialRoute}
           screenOptions={{
             headerStyle: { backgroundColor: '#121212' },
             headerTintColor: '#fff',
             headerTitleStyle: { fontWeight: 'bold' },
             headerShadowVisible: false,
+            headerBackTitle: '',
+            headerLeft: () => <BackButton />,
           }}
         >
           <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
@@ -87,43 +90,38 @@ export default function App() {
             initialParams={savedData} // Pass the recovered user data
             options={{ title: 'My Campaigns' }} 
           />
-          <Stack.Screen 
-            name="Dashboard" 
-            component={DashboardScreen} 
-            initialParams={savedData} // Pass the recovered campaign data
-            options={{ headerShown: false }} 
+          <Stack.Screen
+            name="Dashboard"
+            component={DashboardScreen}
+            initialParams={savedData}
+            options={{ headerTitle: '' }}
           />
-          <Stack.Screen 
-            name="Host" 
-            component={HostScreen} 
-            options={{ title: 'Host Control', headerTintColor: '#FFD700' }} 
+          <Stack.Screen
+            name="Host"
+            component={HostScreen}
+            options={{ title: '' }}
           />
-          <Stack.Screen 
-            name="Leaderboard" 
-            component={LeaderboardScreen} 
-            options={{ headerTitle: '', headerTintColor: '#00D084' }} 
+          <Stack.Screen
+            name="ReadOnlyDashboard"
+            component={ReadOnlyDashboardScreen}
+            options={{ title: '' }}
           />
-          
-          {/* ... your other screens ... */}
-        <Stack.Screen 
-          name="FinalResults" 
-          component={FinalResultsScreen} 
-          options={{ 
-            headerTitle: '', 
-            headerTintColor: '#FFD700',
-            headerLeft: () => null // Hides the back button so they can't escape the podium!
-          }} 
-        />
-        <Stack.Screen 
-            name="ReadOnlyDashboard" 
-            component={ReadOnlyDashboardScreen} 
-            options={{ headerShown: false }} 
-        />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="ArchivedCampaigns" component={ArchivedCampaignsScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="CreateGame" component={CreateGameScreen} options={{ headerTitle: '' }} />
-        <Stack.Screen name="HostAuth" component={HostAuthScreen} options={{ headerTitle: '' }} />
+          <Stack.Screen
+            name="Leaderboard"
+            component={LeaderboardScreen}
+            options={{ headerTitle: '' }}
+          />
+
+          <Stack.Screen
+            name="FinalResults"
+            component={FinalResultsScreen}
+            options={{ headerTitle: '' }}
+          />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: '' }} />
+          <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: '' }} />
+          <Stack.Screen name="ArchivedCampaigns" component={ArchivedCampaignsScreen} options={{ title: '' }} />
+          <Stack.Screen name="CreateGame" component={CreateGameScreen} options={{ headerTitle: '' }} />
+          <Stack.Screen name="HostAuth" component={HostAuthScreen} options={{ headerTitle: '' }} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
