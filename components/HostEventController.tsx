@@ -145,13 +145,19 @@ export default function HostEventController({ event, onEventChanged, onEditReque
         activeOpacity={0.7}
       >
         <View style={styles.headerRow}>
-          <Text style={styles.eventName} numberOfLines={1}>{event.name}</Text>
-          <Text style={[styles.statusBadge, isActive ? styles.statusLive : localStatus === 'completed' ? styles.statusCompleted : styles.statusLocked]}>
-            {(localStatus || 'UNKNOWN').toUpperCase()}
-          </Text>
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text style={styles.eventName} numberOfLines={1}>{event.name}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={[styles.statusBadge, isActive ? styles.statusLive : localStatus === 'completed' ? styles.statusCompleted : styles.statusLocked]}>
+                {(localStatus || 'UNKNOWN').toUpperCase()}
+              </Text>
+            </View>
+          </View>
         </View>
         
-        <View style={styles.infoRow}>
+        <View style={[styles.infoRow, { justifyContent: 'space-between', alignItems: 'center' }]}>
           <Text style={styles.infoText}>⏰ {timeString}</Text>
           {timeLeft && (
             <View style={styles.timerBadge}>
