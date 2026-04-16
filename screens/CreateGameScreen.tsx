@@ -80,6 +80,21 @@ export default function CreateGameScreen({ navigation }: any) {
 
       if (participantError) throw participantError;
 
+      // 🚨 ADD AUDIT TRAIL: Log host's initial balance in ledger
+      const startingPoints = parseInt(startingBankroll) || 10000;
+      const { error: ledgerError } = await supabase
+        .from('ledger_entries')
+        .insert({
+          campaign_id: campaignData.id,
+          user_id: hostId,
+          transaction_type: 'adjustment',
+          amount: startingPoints,
+          memo: 'Initial Bankroll',
+          running_balance: startingPoints
+        });
+
+      if (ledgerError) console.error("Could not log host initial balance:", ledgerError);
+
       // 4. Save ALL IDs to phone memory
       await AsyncStorage.setItem('campaignId', campaignData.id);
       await AsyncStorage.setItem('campaignName', campaignData.name);

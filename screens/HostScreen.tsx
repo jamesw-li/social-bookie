@@ -106,6 +106,11 @@ export default function HostScreen({ navigation }: any) {
 
   const [walletBalance, setWalletBalance] = useState(0);
   const [editingPitch, setEditingPitch] = useState<any>(null);
+  const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
+  const [adjustmentAmount, setAdjustmentAmount] = useState('');
+  const [adjustmentMemo, setAdjustmentMemo] = useState('');
+  const [isDeletingPoints, setIsDeletingPoints] = useState(false);
+  const [isProcessingAdjustment, setIsProcessingAdjustment] = useState(false);
 
   const getGlobalEventId = () => {
     const g = eventsList.find(e => e.name === 'Global');
@@ -411,6 +416,73 @@ export default function HostScreen({ navigation }: any) {
     }
 
     setCreateModalVisible(true);
+  }
+
+  // --- WALLET ADJUSTMENT LOGIC ---
+  async function handleAdjustPoints() {
+    if (!adjustmentAmount || !adjustmentMemo.trim() || !selectedParticipant) return;
+    
+    const amount = parseInt(adjustmentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      return Alert.alert('Invalid Amount', 'Please enter a valid positive number.');
+    }
+
+    const finalAmount = isDeletingPoints ? -amount : amount;
+    setIsProcessingAdjustment(true);
+
+    try {
+      // 1. Get current balance
+      const { data: pData, error: pError } = await supabase
+        .from('campaign_participants')
+        .select('global_point_balance')
+        .eq('campaign_id', activeCampaignId)
+        .eq('user_id', selectedParticipant.user_id)
+        .single();
+
+      if (pError) throw pError;
+      
+      const currentBalance = pData.global_point_balance || 0;
+      const newBalance = currentBalance + finalAmount;
+
+      if (newBalance < 0) {
+        throw new Error("Adjustment would result in a negative balance.");
+      }
+
+      // 2. Update Balance
+      const { error: updateError } = await supabase
+        .from('campaign_participants')
+        .update({ global_point_balance: newBalance })
+        .eq('campaign_id', activeCampaignId)
+        .eq('user_id', selectedParticipant.user_id);
+
+      if (updateError) throw updateError;
+
+      // 3. Log to Ledger
+      const { error: ledgerError } = await supabase
+        .from('ledger_entries')
+        .insert({
+          campaign_id: activeCampaignId,
+          user_id: selectedParticipant.user_id,
+          transaction_type: 'adjustment',
+          amount: finalAmount,
+          memo: adjustmentMemo.trim(),
+          running_balance: newBalance
+        });
+
+      if (ledgerError) console.error("Ledger log error:", ledgerError);
+
+      setAdjustmentModalVisible(false);
+      setAdjustmentAmount('');
+      setAdjustmentMemo('');
+      fetchHostData(activeEventId, true);
+      
+      Alert.alert('Success', `Wallet adjusted for ${selectedParticipant.users.display_name}.`);
+
+    } catch (err: any) {
+      Alert.alert('Adjustment Failed', err.message);
+    } finally {
+      setIsProcessingAdjustment(false);
+    }
   }
 
   const updateP2PMultiplier = (val: string) => {
@@ -1203,6 +1275,16 @@ export default function HostScreen({ navigation }: any) {
                   <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Full transaction history</Text>
                 </View>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                onPress={() => { setPlayerActionSheetVisible(false); setAdjustmentAmount(''); setAdjustmentMemo(''); setIsDeletingPoints(false); setAdjustmentModalVisible(true); }}
+              >
+                <Text style={{ fontSize: 20 }}>💰</Text>
+                <View>
+                  <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 15 }}>Adjust Wallet</Text>
+                  <Text style={{ color: '#666', fontSize: 12, marginTop: 2 }}>Add or delete points</Text>
+                </View>
+              </TouchableOpacity>
               {selectedParticipant?.role === 'guest' && (
                 <TouchableOpacity
                   style={{ backgroundColor: '#121212', padding: 16, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 }}
@@ -1389,6 +1471,66 @@ export default function HostScreen({ navigation }: any) {
             <TouchableOpacity style={{ marginTop: 10, alignItems: 'center' }} onPress={() => setGradeModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal visible={adjustmentModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: '#1e1e1e' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Adjust Wallet</Text>
+              <TouchableOpacity onPress={() => setAdjustmentModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+            </View>
+            
+            <Text style={{ color: '#aaa', marginBottom: 20 }}>Adjusting balance for <Text style={{ color: '#fff', fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text></Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25 }}>
+              <TouchableOpacity 
+                style={[styles.typeBtn, !isDeletingPoints && { backgroundColor: '#00D084', borderColor: '#00D084' }]} 
+                onPress={() => setIsDeletingPoints(false)}
+              >
+                <Text style={[styles.typeBtnText, !isDeletingPoints && { color: '#000', fontWeight: 'bold' }]}>Add Points</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.typeBtn, isDeletingPoints && { backgroundColor: '#ff4444', borderColor: '#ff4444' }]} 
+                onPress={() => setIsDeletingPoints(true)}
+              >
+                <Text style={[styles.typeBtnText, isDeletingPoints && { color: '#fff', fontWeight: 'bold' }]}>Delete Points</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Amount</Text>
+              <TextInput 
+                style={styles.input} 
+                placeholder="0" 
+                placeholderTextColor="#666" 
+                keyboardType="numeric" 
+                value={adjustmentAmount} 
+                onChangeText={(text) => setAdjustmentAmount(sanitizeNumber(text))}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Reason / Description (Required)</Text>
+              <TextInput 
+                style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
+                placeholder="e.g. Side betting payout, Buy-in adjustment, etc." 
+                placeholderTextColor="#666" 
+                multiline 
+                value={adjustmentMemo} 
+                onChangeText={setAdjustmentMemo}
+              />
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.submitBtn, (!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment) && { opacity: 0.5 }]} 
+              onPress={handleAdjustPoints}
+              disabled={!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment}
+            >
+              <Text style={styles.submitBtnText}>{isProcessingAdjustment ? 'Processing...' : 'Confirm Adjustment'}</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

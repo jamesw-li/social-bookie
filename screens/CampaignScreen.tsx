@@ -164,6 +164,20 @@ export default function CampaignScreen({ route, navigation }: any) {
           });
 
         if (joinError) throw joinError;
+
+        // 🚨 ADD AUDIT TRAIL: Log initial balance in ledger
+        const { error: ledgerError } = await supabase
+          .from('ledger_entries')
+          .insert({
+            campaign_id: campaign.id,
+            user_id: userId,
+            transaction_type: 'adjustment',
+            amount: 10000,
+            memo: 'Initial Bankroll',
+            running_balance: 10000
+          });
+
+        if (ledgerError) console.error("Could not log initial balance:", ledgerError);
       }
 
       // 4. Save to phone memory and route to the Dashboard
@@ -202,6 +216,20 @@ export default function CampaignScreen({ route, navigation }: any) {
           }]);
 
         if (insertError) throw insertError;
+
+        // 🚨 ADD AUDIT TRAIL: Log initial balance in ledger
+        const { error: ledgerError } = await supabase
+          .from('ledger_entries')
+          .insert({
+            campaign_id: campaign.id,
+            user_id: userId,
+            transaction_type: 'adjustment',
+            amount: 10000,
+            memo: 'Initial Bankroll',
+            running_balance: 10000
+          });
+
+        if (ledgerError) console.error("Could not log initial balance:", ledgerError);
       }
 
       // 3. Save the active campaign to the phone's memory
