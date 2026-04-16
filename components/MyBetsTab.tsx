@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import EventSwitcher, { EventItem } from './EventSwitcher';
+import EventCountdown from './EventCountdown';
 
 interface MyBetsTabProps {
   combinedTickets: any[];
@@ -8,12 +9,15 @@ interface MyBetsTabProps {
   eventsList: EventItem[];
   activeEventSwitchId: string | null;
   onSelectEvent: (id: string) => void;
+  onRefreshRequest?: () => void;
 }
 
 export default function MyBetsTab({ 
   combinedTickets, userId, 
-  eventsList, activeEventSwitchId, onSelectEvent 
+  eventsList, activeEventSwitchId, onSelectEvent, onRefreshRequest 
 }: MyBetsTabProps) {
+  const activeEvent = eventsList.find(e => e.id === activeEventSwitchId);
+
   const renderTicket = ({ item }: { item: any }) => {
     const isP2P = item.type === 'p2p';
     const isBlind = item.type === 'blind';
@@ -121,13 +125,18 @@ export default function MyBetsTab({
       <View style={styles.subHeader}>
         <View style={styles.subHeaderLeft}>
           <Text style={styles.title}>My Bets</Text>
-          {eventsList.length > 0 && (
-            <EventSwitcher
-              events={eventsList}
-              activeEventId={activeEventSwitchId}
-              onSelectEvent={onSelectEvent}
-            />
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {eventsList.length > 0 && (
+              <EventSwitcher
+                events={eventsList}
+                activeEventId={activeEventSwitchId}
+                onSelectEvent={onSelectEvent}
+              />
+            )}
+            {activeEvent && (
+              <EventCountdown event={activeEvent} onZero={onRefreshRequest} />
+            )}
+          </View>
         </View>
       </View>
 
@@ -263,5 +272,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  countdownBadge: {
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  countdownText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

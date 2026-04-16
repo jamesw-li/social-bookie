@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity
 } from 'react-native';
 import EventSwitcher, { EventItem } from './EventSwitcher';
+import EventCountdown from './EventCountdown';
 
 interface ActionTabProps {
   bets: any[];
@@ -13,13 +14,16 @@ interface ActionTabProps {
   onSelectEvent: (id: string) => void;
   onPitchPress: () => void;
   renderBetCard: (args: { item: any }) => React.ReactElement | null;
+  onRefreshRequest?: () => void;
 }
 
 export default function ActionTab({
   bets, p2pBets, blindMatchups,
   eventsList, activeEventSwitchId,
-  onSelectEvent, onPitchPress, renderBetCard,
+  onSelectEvent, onPitchPress, renderBetCard, onRefreshRequest
 }: ActionTabProps) {
+  const activeEvent = eventsList.find(e => e.id === activeEventSwitchId);
+
   const campaignData = [
     ...blindMatchups.filter(b => (b.status === 'open' || b.status === 'matched') && b.event_id === null).map(b => ({ ...b, isBlind: true })),
     ...p2pBets.filter(b => (b.status === 'open' || b.status === 'locked') && b.event_id === null).map(b => ({ ...b, isP2P: true })),
@@ -38,13 +42,18 @@ export default function ActionTab({
       <View style={styles.subHeader}>
         <View style={styles.subHeaderLeft}>
           <Text style={styles.title}>The Action</Text>
-          {eventsList.length > 0 && (
-            <EventSwitcher
-              events={eventsList}
-              activeEventId={activeEventSwitchId}
-              onSelectEvent={onSelectEvent}
-            />
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {eventsList.length > 0 && (
+              <EventSwitcher
+                events={eventsList}
+                activeEventId={activeEventSwitchId}
+                onSelectEvent={onSelectEvent}
+              />
+            )}
+            {activeEvent && (
+              <EventCountdown event={activeEvent} onZero={onRefreshRequest} />
+            )}
+          </View>
         </View>
         <TouchableOpacity style={styles.pitchButton} onPress={onPitchPress}>
           <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
@@ -130,5 +139,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
     fontSize: 16,
+  },
+  countdownBadge: {
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  countdownText: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

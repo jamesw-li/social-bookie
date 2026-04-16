@@ -11,7 +11,6 @@ import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 import HostEventController, { HostEvent } from '../components/HostEventController';
 import HostBetController, { HostBet } from '../components/HostBetController';
 import EventFormModal from '../components/EventFormModal';
-import GradeModal from '../components/GradeModal';
 import LedgerTab from '../components/LedgerTab';
 import BackButton from '../components/BackButton';
 
@@ -1456,7 +1455,10 @@ export default function HostScreen({ navigation }: any) {
         existingEvent={editingEvent}
         campaignId={activeCampaignId}
         onClose={() => setEventFormVisible(false)}
-        onSaveComplete={() => setEventFormVisible(false)}
+        onSaveComplete={() => {
+          setEventFormVisible(false);
+          fetchHostData(null, true);
+        }}
       />
       
       <Modal visible={createModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>

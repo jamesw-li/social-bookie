@@ -25,11 +25,50 @@ export default function HostEventController({ event, onEventChanged, onEditReque
   const [isClosing, setIsClosing] = useState(false);
   // Local state for optimistic UI
   const [localStatus, setLocalStatus] = useState<EventStatus>(event.status);
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
   // Sync local status if the prop changes (e.g. from a background refresh)
   useEffect(() => {
     setLocalStatus(event.status);
   }, [event.status]);
+
+  // Countdown and Auto-Start Watcher
+  useEffect(() => {
+    if (localStatus !== 'scheduled' || event.trigger_type !== 'auto') {
+      setTimeLeft(null);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const start = new Date(event.start_time).getTime();
+      const diff = start - now;
+
+      if (diff <= 0) {
+        setTimeLeft('STARTING...');
+        clearInterval(interval);
+        // Trigger the watchdog RPC and refresh
+        (async () => {
+          await supabase.rpc('open_expired_auto_events');
+          // Small delay to ensure DB commit is visible to next query
+          setTimeout(() => {
+            onEventChanged(true);
+          }, 1000);
+        })();
+      } else {
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        const hDisplay = hours > 0 ? `${hours}:` : '';
+        const mDisplay = minutes < 10 && hours > 0 ? `0${minutes}` : minutes;
+        const sDisplay = seconds < 10 ? `0${seconds}` : seconds;
+        setTimeLeft(`${hDisplay}${mDisplay}:${sDisplay}`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [localStatus, event.start_time, event.trigger_type]);
 
   const handleToggleStatus = async (value: boolean) => {
     const newStatus: EventStatus = value ? 'live' : 'scheduled';
@@ -114,6 +153,11 @@ export default function HostEventController({ event, onEventChanged, onEditReque
         
         <View style={styles.infoRow}>
           <Text style={styles.infoText}>⏰ {timeString}</Text>
+          {timeLeft && (
+            <View style={styles.timerBadge}>
+              <Text style={styles.timerBadgeText}>⏳ {timeLeft}</Text>
+            </View>
+          )}
         </View>
 
         {(event.description || event.trigger_type) && (
@@ -216,6 +260,20 @@ const styles = StyleSheet.create({
   infoText: {
     color: '#A0A0A0',
     fontSize: 12,
+  },
+  timerBadge: {
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  timerBadgeText: {
+    color: '#FFD700',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
   descriptionText: {
     color: '#666',

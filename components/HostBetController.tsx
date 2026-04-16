@@ -18,6 +18,10 @@ export interface HostBet {
   bet_options?: BetOption[];
   wager_count?: number;
   event_name?: string;
+  side_a_user_id?: string | null;
+  side_b_user_id?: string | null;
+  user_1_id?: string | null;
+  user_2_id?: string | null;
 }
 
 interface HostBetControllerProps {

@@ -116,6 +116,8 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
       const newD = new Date(dateObj);
       newD.setHours(selectedTime.getHours());
       newD.setMinutes(selectedTime.getMinutes());
+      newD.setSeconds(0);
+      newD.setMilliseconds(0);
       setDateObj(newD);
 
       const hh = String(newD.getHours()).padStart(2, '0');
@@ -134,29 +136,11 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
     let parsedIsoString = null;
 
     if (dateInput.trim() || timeInput.trim() || triggerType === 'auto') {
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      const timeRegex = /^\d{2}:\d{2}$/;
-
-      if (!dateRegex.test(dateInput)) {
-        const msg = 'Date must be in YYYY-MM-DD format.';
-        if (Platform.OS === 'web') return window.alert(msg);
-        return Alert.alert('Invalid', msg);
-      }
-      if (!timeRegex.test(timeInput)) {
-        const msg = 'Time must be in HH:MM format (24-hr).';
-        if (Platform.OS === 'web') return window.alert(msg);
-        return Alert.alert('Invalid', msg);
-      }
-
-      // We treat the input as UTC for consistent DB storage
-      try {
-        const dateObj = new Date(`${dateInput}T${timeInput}:00Z`);
-        if (isNaN(dateObj.getTime())) {
-          throw new Error('Invalid date/time values (e.g. month 13)');
-        }
+      // Use the dateObj directly to avoid timezone string parsing issues
+      if (!isNaN(dateObj.getTime())) {
         parsedIsoString = dateObj.toISOString();
-      } catch (err: any) {
-        const msg = err.message || 'Could not parse date and time.';
+      } else {
+        const msg = 'Could not determine a valid date and time.';
         if (Platform.OS === 'web') return window.alert(msg);
         return Alert.alert('Invalid Date', msg);
       }

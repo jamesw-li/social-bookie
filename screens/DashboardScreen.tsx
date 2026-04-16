@@ -233,6 +233,10 @@ export default function DashboardScreen({ route, navigation }: any) {
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
 
+      // Watchdog: Open any auto-timer events that should be live
+      // 10s buffer matches the RPC logic to prevent race conditions/clock drift
+      await supabase.rpc('open_expired_auto_events');
+
       setUserId(storedUserId);
       setCampaignId(storedCampaignId);
 
@@ -249,7 +253,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         setUserRole(participantData.role);
       }
 
-      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', storedCampaignId).order('start_time', { ascending: true });
+      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time, trigger_type').eq('campaign_id', storedCampaignId).order('start_time', { ascending: true });
       const eventsDataList = campaignEvents || [];
       setEventsList(eventsDataList);
 
@@ -837,6 +841,7 @@ export default function DashboardScreen({ route, navigation }: any) {
             onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }}
             onPitchPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }}
             renderBetCard={renderBetCard}
+            onRefreshRequest={() => loadBoard(activeEventSwitchId)}
           />
         )}
 
@@ -855,6 +860,7 @@ export default function DashboardScreen({ route, navigation }: any) {
             eventsList={eventsList}
             activeEventSwitchId={activeEventSwitchId}
             onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }}
+            onRefreshRequest={() => loadBoard(activeEventSwitchId)}
           />
         )}
 

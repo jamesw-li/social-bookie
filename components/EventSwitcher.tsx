@@ -8,6 +8,7 @@ export interface EventItem {
   name: string;
   status: EventStatus;
   start_time?: string;
+  trigger_type?: 'manual' | 'auto';
 }
 
 interface EventSwitcherProps {
@@ -19,10 +20,12 @@ interface EventSwitcherProps {
 export default function EventSwitcher({ events, activeEventId, onSelectEvent }: EventSwitcherProps) {
   const [modalVisible, setModalVisible] = useState(false);
 
-  const getIcon = (status: EventStatus) => {
-    switch (status) {
+  const getIcon = (event?: EventItem) => {
+    if (!event) return '';
+    switch (event.status) {
       case 'live': return '🟢';
-      case 'scheduled': return '⏳';
+      case 'scheduled': 
+        return event.trigger_type === 'auto' ? '⏳' : '🔴';
       case 'completed': return '🔒';
       default: return '';
     }
@@ -52,7 +55,7 @@ export default function EventSwitcher({ events, activeEventId, onSelectEvent }: 
         style={styles.dropdownButton} 
         onPress={() => setModalVisible(true)}
       >
-        <Text style={styles.dropdownIcon}>{getIcon(activeEvent?.status)}</Text>
+        <Text style={styles.dropdownIcon}>{getIcon(activeEvent)}</Text>
         <Text style={styles.dropdownText}>{getTriggerText(activeEvent)}</Text>
         <Text style={styles.chevron}>▼</Text>
       </TouchableOpacity>
@@ -89,7 +92,7 @@ export default function EventSwitcher({ events, activeEventId, onSelectEvent }: 
                     }}
                   >
                     <View style={styles.eventRowLeft}>
-                      <Text style={styles.rowIcon}>{getIcon(item.status)}</Text>
+                      <Text style={styles.rowIcon}>{getIcon(item)}</Text>
                       <Text style={[styles.rowText, isActive && styles.rowTextActive]}>
                         {item.name}
                       </Text>
