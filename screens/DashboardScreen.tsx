@@ -1016,12 +1016,6 @@ export default function DashboardScreen({ route, navigation }: any) {
               <View style={{ marginBottom: 15 }}>
                 <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                  <TouchableOpacity
-                    style={[styles.scopePill, pitchEventScope === null && styles.scopePillActive]}
-                    onPress={() => setPitchEventScope(null)}
-                  >
-                    <Text style={[styles.scopePillText, pitchEventScope === null && styles.scopePillTextActive]}>🌐 Global</Text>
-                  </TouchableOpacity>
                   {eventsList.map((e: any) => (
                     <TouchableOpacity
                       key={e.id}

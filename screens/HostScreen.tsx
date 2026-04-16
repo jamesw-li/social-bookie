@@ -844,12 +844,6 @@ export default function HostScreen({ navigation }: any) {
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.filterLabel}>Filter by Event:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-            <TouchableOpacity
-              style={[styles.scopePill, drillDownEventId === globalId && styles.scopePillActive]}
-              onPress={() => setDrillDownEventId(globalId)}
-            >
-              <Text style={[styles.scopePillText, drillDownEventId === globalId && styles.scopePillTextActive]}>🌐 Global</Text>
-            </TouchableOpacity>
             {eventsList.map((e: any) => (
               <TouchableOpacity
                 key={e.id}
@@ -1148,12 +1142,6 @@ export default function HostScreen({ navigation }: any) {
             <View style={{ marginBottom: 15 }}>
               <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-                <TouchableOpacity
-                  style={[styles.scopePill, hostEventScope === getGlobalEventId() && styles.scopePillActive]}
-                  onPress={() => setHostEventScope(getGlobalEventId())}
-                >
-                  <Text style={[styles.scopePillText, hostEventScope === getGlobalEventId() && styles.scopePillTextActive]}>🌐 Global</Text>
-                </TouchableOpacity>
                 {eventsList.map((e: any) => (
                   <TouchableOpacity
                     key={e.id}
