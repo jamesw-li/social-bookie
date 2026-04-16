@@ -91,9 +91,12 @@ export default function EventSwitcher({ events, activeEventId, onSelectEvent }: 
                     <View style={styles.eventRowLeft}>
                       <Text style={styles.rowIcon}>{getIcon(item.status)}</Text>
                       <Text style={[styles.rowText, isActive && styles.rowTextActive]}>
-                        {getDisplayText(item)}
+                        {item.name}
                       </Text>
                     </View>
+                    {item.start_time && (
+                      <Text style={styles.rowTime}>{formatDate(item.start_time)}</Text>
+                    )}
                     {isActive && <Text style={styles.checkmark}>✓</Text>}
                   </TouchableOpacity>
                 );
@@ -171,9 +174,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 208, 132, 0.1)',
     borderBottomColor: 'transparent',
   },
-  eventRowLeft: {
+   eventRowLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   rowIcon: {
     fontSize: 16,
@@ -188,9 +192,15 @@ const styles = StyleSheet.create({
     color: '#00D084',
     fontWeight: 'bold',
   },
-  checkmark: {
+   checkmark: {
     color: '#00D084',
     fontSize: 18,
     fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  rowTime: {
+    color: '#666',
+    fontSize: 13,
+    marginLeft: 10,
   },
 });

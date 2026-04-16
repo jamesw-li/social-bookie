@@ -45,7 +45,12 @@ export default function ReadOnlyDashboardScreen({ route, navigation }: any) {
 
       // 3. Fetch specific event ID for House Bets
       const { data: eventData } = await supabase
-        .from('events').select('id').eq('campaign_id', campId).single();
+        .from('events')
+        .select('id')
+        .eq('campaign_id', campId)
+        .order('start_time', { ascending: true })
+        .limit(1)
+        .single();
 
       let houseReceipts: any[] = [];
       if (eventData) {

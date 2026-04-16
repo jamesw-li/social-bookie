@@ -249,7 +249,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         setUserRole(participantData.role);
       }
 
-      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', storedCampaignId);
+      const { data: campaignEvents } = await supabase.from('events').select('id, name, status, start_time').eq('campaign_id', storedCampaignId).order('start_time', { ascending: true });
       const eventsDataList = campaignEvents || [];
       setEventsList(eventsDataList);
 
