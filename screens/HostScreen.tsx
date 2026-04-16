@@ -801,7 +801,6 @@ export default function HostScreen({ navigation }: any) {
   const renderEventsView = () => (
     <View style={styles.subViewContainer}>
       <View style={styles.subViewHeader}>
-        <Text style={styles.subViewTitle}>Manage Events</Text>
         <TouchableOpacity 
           style={styles.addEventBtnSmall} 
           onPress={() => { setEditingEvent(null); setEventFormVisible(true); }}
@@ -834,7 +833,6 @@ export default function HostScreen({ navigation }: any) {
     return (
       <View style={styles.subViewContainer}>
         <View style={styles.subViewHeader}>
-          <Text style={styles.subViewTitle}>Manage Bets</Text>
           <TouchableOpacity 
             style={styles.addBetBtnSmall} 
             onPress={() => { setNewQuestion(''); setHostEventScope(currentFilterId); setCreateModalVisible(true); }}
@@ -1353,7 +1351,7 @@ const styles = StyleSheet.create({
 
   // SUB-VIEW COMMON
   subViewContainer: { padding: 20, paddingBottom: 60 },
-  subViewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  subViewHeader: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 20 },
   subViewTitle: { color: '#FFD700', fontSize: 24, fontWeight: 'bold' },
   addEventBtnSmall: { backgroundColor: 'rgba(0, 208, 132, 0.1)', borderWidth: 1, borderColor: '#00D084', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
   addEventBtnTextSmall: { color: '#00D084', fontWeight: 'bold', fontSize: 13 },
