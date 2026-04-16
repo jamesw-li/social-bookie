@@ -41,7 +41,12 @@ export default function ActionTab({
       {/* Sub-header */}
       <View style={styles.subHeader}>
         <View style={styles.subHeaderLeft}>
-          <Text style={styles.title}>The Action</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <Text style={styles.title}>The Action</Text>
+            <TouchableOpacity style={styles.pitchButton} onPress={onPitchPress}>
+              <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
+            </TouchableOpacity>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             {eventsList.length > 0 && (
               <EventSwitcher
@@ -55,9 +60,6 @@ export default function ActionTab({
             )}
           </View>
         </View>
-        <TouchableOpacity style={styles.pitchButton} onPress={onPitchPress}>
-          <Text style={styles.pitchButtonText}>+ Pitch Bet</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Feed */}
@@ -111,19 +113,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   pitchButton: {
-    backgroundColor: '#00D084',
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: '#FFD700',
     paddingHorizontal: 15,
-    borderRadius: 8,
-    shadowColor: '#00D084',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
+    paddingVertical: 8,
+    borderRadius: 20,
   },
   pitchButtonText: {
-    color: '#000',
+    color: '#FFD700',
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 13,
   },
   sectionHeader: {
     fontSize: 13,
