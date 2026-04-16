@@ -469,23 +469,38 @@ export default function HostScreen({ navigation }: any) {
 
       setIsCreating(true);
       try {
-        const { error } = await supabase.from('blind_matchups').insert([{
-          campaign_id: activeCampaignId,
-          event_id: hostEventScope,
-          question: newQuestion,
-          side_a_label: p2pOptionA,
-          side_b_label: p2pOptionB,
-          base_amount: baseAmt,
-          user_1_id: currentUserId,
-          user_1_bid_multiplier: multiAmt,
-          status: 'open'
-        }]);
-
-        if (error) throw error;
+        if (editingPitch && editingPitch.sourceTable === 'blind_matchups') {
+          // --- UPDATE EXISTING BLIND PITCH ---
+          const { error } = await supabase.from('blind_matchups').update({
+            event_id: hostEventScope,
+            question: newQuestion,
+            side_a_label: p2pOptionA,
+            side_b_label: p2pOptionB,
+            base_amount: baseAmt,
+            user_1_bid_multiplier: multiAmt,
+            status: 'open'
+          }).eq('id', editingPitch.id);
+          if (error) throw error;
+        } else {
+          // --- INSERT NEW BLIND BET ---
+          const { error } = await supabase.from('blind_matchups').insert([{
+            campaign_id: activeCampaignId,
+            event_id: hostEventScope,
+            question: newQuestion,
+            side_a_label: p2pOptionA,
+            side_b_label: p2pOptionB,
+            base_amount: baseAmt,
+            user_1_id: currentUserId,
+            user_1_bid_multiplier: multiAmt,
+            status: 'open'
+          }]);
+          if (error) throw error;
+        }
 
         setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setBlindBase('100'); setBlindMultiplier('2.0');
+        setEditingPitch(null);
         setCreateModalVisible(false);
-        fetchHostData();
+        fetchHostData(activeEventId, true);
       } catch (error: any) {
         Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
       } finally { setIsCreating(false); }
@@ -513,23 +528,38 @@ export default function HostScreen({ navigation }: any) {
 
       setIsCreating(true);
       try {
-        const { error } = await supabase.from('p2p_prop_bets').insert([{
-          campaign_id: activeCampaignId,
-          event_id: hostEventScope,
-          proposer_id: currentUserId,
-          question: newQuestion,
-          option_a_label: p2pOptionA,
-          option_b_label: p2pOptionB,
-          wager_amount: wagerAmt,
-          multiplier: multiAmt,
-          status: 'open'
-        }]);
-
-        if (error) throw error;
+        if (editingPitch && editingPitch.sourceTable === 'p2p_prop_bets') {
+          // --- UPDATE EXISTING P2P PITCH ---
+          const { error } = await supabase.from('p2p_prop_bets').update({
+            event_id: hostEventScope,
+            question: newQuestion,
+            option_a_label: p2pOptionA,
+            option_b_label: p2pOptionB,
+            wager_amount: wagerAmt,
+            multiplier: multiAmt,
+            status: 'open'
+          }).eq('id', editingPitch.id);
+          if (error) throw error;
+        } else {
+          // --- INSERT NEW P2P BET ---
+          const { error } = await supabase.from('p2p_prop_bets').insert([{
+            campaign_id: activeCampaignId,
+            event_id: hostEventScope,
+            proposer_id: currentUserId,
+            question: newQuestion,
+            option_a_label: p2pOptionA,
+            option_b_label: p2pOptionB,
+            wager_amount: wagerAmt,
+            multiplier: multiAmt,
+            status: 'open'
+          }]);
+          if (error) throw error;
+        }
 
         setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setP2pWager('100'); setP2pMultiplier('2.0');
+        setEditingPitch(null);
         setCreateModalVisible(false);
-        fetchHostData();
+        fetchHostData(activeEventId, true);
       } catch (error: any) {
         Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
       } finally { setIsCreating(false); }
@@ -560,32 +590,53 @@ export default function HostScreen({ navigation }: any) {
     setIsCreating(true);
     try {
         const currentCampId = activeCampaignId || await AsyncStorage.getItem('campaignId');
-        const { data: betData, error: betError } = await supabase
-          .from('bets')
-          .insert([{
-            event_id: hostEventScope,
-            type: betType,
-            question: newQuestion,
-            status: 'open',
-            campaign_id: currentCampId,
-            creator_id: currentUserId
-          }])
-        .select().single();
+        let finalBetId: string;
 
-      if (betError) throw betError;
+        if (editingPitch && editingPitch.sourceTable === 'bets') {
+          // --- UPDATE EXISTING HOUSE PITCH ---
+          const { error: betUpdateError } = await supabase
+            .from('bets')
+            .update({
+              event_id: hostEventScope,
+              type: betType,
+              question: newQuestion,
+              status: 'open'
+            })
+            .eq('id', editingPitch.id);
+          if (betUpdateError) throw betUpdateError;
+          finalBetId = editingPitch.id;
+          
+          // Delete old options and re-insert
+          await supabase.from('bet_options').delete().eq('bet_id', finalBetId);
+        } else {
+          // --- INSERT NEW HOUSE BET ---
+          const { data: betData, error: betError } = await supabase
+            .from('bets')
+            .insert([{
+              event_id: hostEventScope,
+              type: betType,
+              question: newQuestion,
+              status: 'open',
+              campaign_id: currentCampId,
+              creator_id: currentUserId
+            }])
+            .select().single();
+          if (betError) throw betError;
+          finalBetId = betData.id;
+
+          if (editingPitch && editingPitch.sourceTable === 'guest_proposals') {
+             await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', editingPitch.id);
+          }
+        }
 
       const optionsToInsert = validOptions.map(opt => ({
-        bet_id: betData.id, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
+        bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
       }));
 
       await supabase.from('bet_options').insert(optionsToInsert);
 
-      if (activeProposalId) {
-        await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', activeProposalId);
-      }
-
-      setNewQuestion(''); setActiveProposalId(null); handleToggleBetType('prop');
-      setCreateModalVisible(false); fetchHostData();
+      setNewQuestion(''); setEditingPitch(null); handleToggleBetType('prop');
+      setCreateModalVisible(false); fetchHostData(activeEventId, true);
     } catch (error: any) {
       Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
     } finally { setIsCreating(false); }
@@ -1232,7 +1283,7 @@ export default function HostScreen({ navigation }: any) {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Push Live Bet</Text>
-              <TouchableOpacity onPress={() => setCreateModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setCreateModalVisible(false); setEditingPitch(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
             </View>
             <View style={{ marginBottom: 15 }}>
               <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
