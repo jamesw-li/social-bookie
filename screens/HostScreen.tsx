@@ -178,26 +178,35 @@ export default function HostScreen({ navigation }: any) {
   }, [navigation, activeView]);
 
   useEffect(() => {
+    const channels: any[] = [];
 
-    const proposalSub = supabase.channel('public:guest_proposals')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => fetchHostData(undefined, true)).subscribe();
+    async function setupRealtime() {
+      const storedCampaignId = await AsyncStorage.getItem('campaignId');
+      if (!storedCampaignId) return;
 
-    const pitchSub = supabase.channel('public:p2p_prop_bets')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => fetchHostData(undefined, true)).subscribe();
+      const proposalSub = supabase.channel(`public:guest_proposals_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals', filter: `campaign_id=eq.${storedCampaignId}` }, () => fetchHostData(undefined, true)).subscribe();
 
-    const blindSub = supabase.channel('public:blind_matchups_host')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => fetchHostData(undefined, true)).subscribe();
+      const pitchSub = supabase.channel(`public:p2p_prop_bets_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets', filter: `campaign_id=eq.${storedCampaignId}` }, () => fetchHostData(undefined, true)).subscribe();
 
-    const betsSub = supabase.channel('public:bets_host')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => fetchHostData(undefined, true)).subscribe();
+      const blindSub = supabase.channel(`public:blind_matchups_host_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups', filter: `campaign_id=eq.${storedCampaignId}` }, () => fetchHostData(undefined, true)).subscribe();
 
+      const betsSub = supabase.channel(`public:bets_host_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bets', filter: `campaign_id=eq.${storedCampaignId}` }, () => fetchHostData(undefined, true)).subscribe();
+
+      const eventsSub = supabase.channel(`public:events_host_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `campaign_id=eq.${storedCampaignId}` }, () => fetchHostData(undefined, true)).subscribe();
+
+      channels.push(proposalSub, pitchSub, blindSub, betsSub, eventsSub);
+    }
+
+    setupRealtime();
     AsyncStorage.getItem('campaignJoinCode').then(code => setCampaignJoinCode(code || ''));
 
     return () => {
-      supabase.removeChannel(proposalSub);
-      supabase.removeChannel(pitchSub);
-      supabase.removeChannel(blindSub);
-      supabase.removeChannel(betsSub);
+      channels.forEach(ch => supabase.removeChannel(ch));
     };
   }, []);
 

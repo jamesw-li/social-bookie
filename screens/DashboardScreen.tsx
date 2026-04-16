@@ -182,41 +182,44 @@ export default function DashboardScreen({ route, navigation }: any) {
   }, [navigation, userRole, walletBalance, pendingApprovals]);
 
   useEffect(() => {
-    let walletSub: any;
-    let betsSub: any;
-    let campaignSub: any;
-    let p2pSub: any;
-    let blindSub: any;
+    const channels: any[] = [];
 
     async function setupRealtime() {
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
+      if (!storedCampaignId) return;
 
-      walletSub = supabase.channel('public:campaign_participants_dashboard')
+      const walletSub = supabase.channel(`public:campaign_participants_${storedCampaignId}_${storedUserId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaign_participants', filter: `user_id=eq.${storedUserId}` }, () => loadBoard()).subscribe();
-      betsSub = supabase.channel('public:bets_dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, () => loadBoard()).subscribe();
-      campaignSub = supabase.channel(`campaign_status_${storedCampaignId}`)
+      
+      const betsSub = supabase.channel(`public:bets_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bets', filter: `campaign_id=eq.${storedCampaignId}` }, () => loadBoard()).subscribe();
+      
+      const eventsSub = supabase.channel(`public:events_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `campaign_id=eq.${storedCampaignId}` }, () => loadBoard()).subscribe();
+      
+      const campaignSub = supabase.channel(`campaign_status_${storedCampaignId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'campaigns', filter: `id=eq.${storedCampaignId}` },
           (payload) => { if (payload.new.status === 'closed') navigation.reset({ index: 0, routes: [{ name: 'FinalResults' }] }); }
         ).subscribe();
-      p2pSub = supabase.channel('public:p2p_dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets' }, () => loadBoard()).subscribe();
-      blindSub = supabase.channel('public:blind_dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups' }, () => loadBoard()).subscribe();
-      const proposalSub = supabase.channel('public:proposal_dashboard')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals' }, () => loadBoard()).subscribe();
+      
+      const p2pSub = supabase.channel(`public:p2p_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_prop_bets', filter: `campaign_id=eq.${storedCampaignId}` }, () => loadBoard()).subscribe();
+      
+      const blindSub = supabase.channel(`public:blind_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blind_matchups', filter: `campaign_id=eq.${storedCampaignId}` }, () => loadBoard()).subscribe();
+      
+      const proposalSub = supabase.channel(`public:proposal_${storedCampaignId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'guest_proposals', filter: `campaign_id=eq.${storedCampaignId}` }, () => loadBoard()).subscribe();
+
+      channels.push(walletSub, betsSub, eventsSub, campaignSub, p2pSub, blindSub, proposalSub);
     }
 
     loadBoard();
     setupRealtime();
 
     return () => {
-      if (walletSub) supabase.removeChannel(walletSub);
-      if (betsSub) supabase.removeChannel(betsSub);
-      if (campaignSub) supabase.removeChannel(campaignSub);
-      if (p2pSub) supabase.removeChannel(p2pSub);
-      if (blindSub) supabase.removeChannel(blindSub);
+      channels.forEach(ch => supabase.removeChannel(ch));
     };
   }, []);
 
