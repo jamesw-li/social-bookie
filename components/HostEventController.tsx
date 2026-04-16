@@ -21,11 +21,31 @@ interface HostEventControllerProps {
 }
 
 export default function HostEventController({ event, onEventChanged, onEditRequest }: HostEventControllerProps) {
+  const getTimeLeft = () => {
+    if (localStatus !== 'scheduled' || event.trigger_type !== 'auto') {
+      return null;
+    }
+    const now = new Date().getTime();
+    const start = new Date(event.start_time).getTime();
+    const diff = start - now;
+
+    if (diff <= 0) return 'STARTING...';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    const hDisplay = hours > 0 ? `${hours}:` : '';
+    const mDisplay = minutes < 10 && hours > 0 ? `0${minutes}` : minutes;
+    const sDisplay = seconds < 10 ? `0${seconds}` : seconds;
+    return `${hDisplay}${mDisplay}:${sDisplay}`;
+  };
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   // Local state for optimistic UI
   const [localStatus, setLocalStatus] = useState<EventStatus>(event.status);
-  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState<string | null>(getTimeLeft());
 
   // Sync local status if the prop changes (e.g. from a background refresh)
   useEffect(() => {
@@ -34,18 +54,24 @@ export default function HostEventController({ event, onEventChanged, onEditReque
 
   // Countdown and Auto-Start Watcher
   useEffect(() => {
-    if (localStatus !== 'scheduled' || event.trigger_type !== 'auto') {
-      setTimeLeft(null);
+    const tl = getTimeLeft();
+    setTimeLeft(tl);
+
+    if (!tl || tl === 'STARTING...') {
+      if (tl === 'STARTING...') {
+        (async () => {
+          await supabase.rpc('open_expired_auto_events');
+          setTimeout(() => onEventChanged(true), 1000);
+        })();
+      }
       return;
     }
 
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const start = new Date(event.start_time).getTime();
-      const diff = start - now;
+      const updated = getTimeLeft();
+      setTimeLeft(updated);
 
-      if (diff <= 0) {
-        setTimeLeft('STARTING...');
+      if (updated === 'STARTING...') {
         clearInterval(interval);
         // Trigger the watchdog RPC and refresh
         (async () => {
@@ -55,15 +81,6 @@ export default function HostEventController({ event, onEventChanged, onEditReque
             onEventChanged(true);
           }, 1000);
         })();
-      } else {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-        const hDisplay = hours > 0 ? `${hours}:` : '';
-        const mDisplay = minutes < 10 && hours > 0 ? `0${minutes}` : minutes;
-        const sDisplay = seconds < 10 ? `0${seconds}` : seconds;
-        setTimeLeft(`${hDisplay}${mDisplay}:${sDisplay}`);
       }
     }, 1000);
 

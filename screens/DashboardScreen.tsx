@@ -25,9 +25,13 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>('guest');
 
-  const [bets, setBets] = useState<any[]>([]);
-  const [p2pBets, setP2pBets] = useState<any[]>([]);
-  const [blindMatchups, setBlindMatchups] = useState<any[]>([]);
+  // Consolidated data state to prevent multiple re-renders
+  const [boardData, setBoardData] = useState<{
+    bets: any[],
+    p2pBets: any[],
+    blindMatchups: any[]
+  }>({ bets: [], p2pBets: [], blindMatchups: [] });
+
   const [myWagers, setMyWagers] = useState<any[]>([]);
   const [myBets, setMyBets] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
@@ -63,6 +67,9 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [blindBidPercent, setBlindBidPercent] = useState('50');
 
   const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  // Initial load tracking
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   // --- PITCH MODAL HELPER FUNCTIONS ---
   const handleTogglePitchBetType = (type: any) => {
@@ -207,6 +214,9 @@ export default function DashboardScreen({ route, navigation }: any) {
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
 
+      // Only show spinner on the very first load
+      if (isInitialLoad) setLoading(true);
+
       await Promise.all([
         supabase.rpc('open_expired_auto_events'),
         supabase.rpc('lock_expired_auto_bets')
@@ -239,7 +249,8 @@ export default function DashboardScreen({ route, navigation }: any) {
           targetEventId = fallbackEvent.id;
           setActiveEventSwitchId(targetEventId as string);
         } else {
-          return setLoading(false);
+          setLoading(false);
+          return;
         }
       }
       setActiveEvent(eventsDataList.find((e: any) => e.id === targetEventId));
@@ -268,25 +279,35 @@ export default function DashboardScreen({ route, navigation }: any) {
         });
       };
 
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, wager_count, trigger_type, lock_at, created_at, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
-      if (betsData) setBets(sortBets(betsData));
+      // Perform all fetches in parallel
+      const [betsRes, p2pRes, blindRes, wagersRes, standingsRes] = await Promise.all([
+        supabase.from('bets').select(`id, question, status, wager_count, trigger_type, lock_at, created_at, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter),
+        supabase.from('p2p_prop_bets').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter),
+        supabase.from('blind_matchups').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter),
+        supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId),
+        supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false })
+      ]);
 
-      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter);
-      if (p2pData) setP2pBets(sortBets(p2pData));
+      // Batch all data updates into one turn
+      const newBoardData = {
+        bets: sortBets(betsRes.data ?? []),
+        p2pBets: sortBets(p2pRes.data ?? []),
+        blindMatchups: sortBets(blindRes.data ?? [])
+      };
 
-      const { data: blindData } = await supabase.from('blind_matchups').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter);
-      if (blindData) setBlindMatchups(sortBets(blindData));
-
-      const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
-      if (wagersData) {
-        const activeWagers = wagersData.filter((w: any) => w.status !== 'canceled');
+      setBoardData(newBoardData);
+      
+      if (wagersRes.data) {
+        const activeWagers = wagersRes.data.filter((w: any) => w.status !== 'canceled');
         setMyWagers(activeWagers.filter((w: any) => w.status === 'pending'));
         setMyBets(activeWagers.reverse());
       }
-      const { data: standingsData } = await supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false });
-      if (standingsData) setStandings(standingsData);
+      if (standingsRes.data) setStandings(standingsRes.data);
 
-    } catch (error: any) { console.error(error.message); } finally { setLoading(false); }
+    } catch (error: any) { console.error(error.message); } finally { 
+      setLoading(false); 
+      setIsInitialLoad(false);
+    }
   }
 
   function openBetSlip(bet: any, option?: any) {
@@ -509,8 +530,8 @@ export default function DashboardScreen({ route, navigation }: any) {
   if (loading) return <View style={styles.container}><ActivityIndicator size="large" color="#00D084" /></View>;
 
   const combinedTickets = [
-    ...blindMatchups.filter(b => String(b.user_1_id) === String(userId) || String(b.user_2_id) === String(userId)).map(b => ({ ...b, type: 'blind' })),
-    ...p2pBets.filter(b => String(b.side_a_user_id) === String(userId) || String(b.side_b_user_id) === String(userId)).map(b => ({ ...b, type: 'p2p' })),
+    ...boardData.blindMatchups.filter((b: any) => String(b.user_1_id) === String(userId) || String(b.user_2_id) === String(userId)).map((b: any) => ({ ...b, type: 'blind' })),
+    ...boardData.p2pBets.filter((b: any) => String(b.side_a_user_id) === String(userId) || String(b.side_b_user_id) === String(userId)).map((b: any) => ({ ...b, type: 'p2p' })),
     ...myBets.map(w => ({ ...w, type: 'house' }))
   ].sort((a, b) => (new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
 
@@ -518,7 +539,17 @@ export default function DashboardScreen({ route, navigation }: any) {
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {activeTab === 'action' && (
-          <ActionTab bets={bets} p2pBets={p2pBets} blindMatchups={blindMatchups} eventsList={eventsList} activeEventSwitchId={activeEventSwitchId} onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }} onPitchPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }} renderBetCard={renderBetCard} onRefreshRequest={() => loadBoard(activeEventSwitchId)} />
+          <ActionTab 
+            bets={boardData.bets} 
+            p2pBets={boardData.p2pBets} 
+            blindMatchups={boardData.blindMatchups} 
+            eventsList={eventsList} 
+            activeEventSwitchId={activeEventSwitchId} 
+            onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }} 
+            onPitchPress={() => { setPitchEventScope(activeEventSwitchId); setSuggestModalVisible(true); }} 
+            renderBetCard={renderBetCard} 
+            onRefreshRequest={() => loadBoard(activeEventSwitchId)} 
+          />
         )}
         {activeTab === 'standings' && <StandingsTab standings={standings} userId={userId} />}
         {activeTab === 'ledger' && <LedgerTab userId={userId} campaignId={campaignId} />}

@@ -16,33 +16,44 @@ interface BetCountdownProps {
 }
 
 export default function BetCountdown({ bet, onZero, mode = 'full', color }: BetCountdownProps) {
-  const [timeLeft, setTimeLeft] = useState<string | null>(null);
-
-  useEffect(() => {
+  const getTimeLeft = () => {
     // Show countdown for 'open' (guests) and also 'locked' (hosts) if auto-trigger is active
     if (!['open', 'locked'].includes(bet.status) || bet.trigger_type !== 'auto' || !bet.lock_at) {
-      setTimeLeft(null);
+      return null;
+    }
+    const now = new Date().getTime();
+    const lock = new Date(bet.lock_at!).getTime();
+    const diff = lock - now;
+
+    if (diff <= 0) return '00:00';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    const hDisplay = hours > 0 ? `${hours}:` : '';
+    const mDisplay = minutes < 10 && hours > 0 ? `0${minutes}` : minutes;
+    const sDisplay = seconds < 10 ? `0${seconds}` : seconds;
+    return `${hDisplay}${mDisplay}:${sDisplay}`;
+  };
+
+  const [timeLeft, setTimeLeft] = useState<string | null>(getTimeLeft());
+
+  useEffect(() => {
+    const tl = getTimeLeft();
+    setTimeLeft(tl);
+
+    if (!tl || tl === '00:00') {
+      if (tl === '00:00' && onZero) onZero();
       return;
     }
 
     const interval = setInterval(() => {
-      const now = new Date().getTime();
-      const lock = new Date(bet.lock_at!).getTime();
-      const diff = lock - now;
-
-      if (diff <= 0) {
-        setTimeLeft('00:00');
+      const updated = getTimeLeft();
+      setTimeLeft(updated);
+      if (updated === '00:00') {
         if (onZero) onZero();
-        return; // Logic changed: don't clear interval if we want it to stay at 00:00, or just stop here.
-      } else {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-        const hDisplay = hours > 0 ? `${hours}:` : '';
-        const mDisplay = minutes < 10 && hours > 0 ? `0${minutes}` : minutes;
-        const sDisplay = seconds < 10 ? `0${seconds}` : seconds;
-        setTimeLeft(`${hDisplay}${mDisplay}:${sDisplay}`);
+        // Logic changed: don't clear interval if we want it to stay at 00:00
       }
     }, 1000);
 
