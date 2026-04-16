@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Switch, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import BetCountdown from './BetCountdown';
 
 export interface BetOption {
   id: string;
@@ -22,16 +23,20 @@ export interface HostBet {
   side_b_user_id?: string | null;
   user_1_id?: string | null;
   user_2_id?: string | null;
+  trigger_type?: 'manual' | 'auto';
+  lock_at?: string | null;
 }
 
 interface HostBetControllerProps {
   bet: HostBet;
   onStatusToggle: (betId: string, newStatus: string) => void;
   onGradeRequest: (bet: HostBet) => void;
-  onDeleteRequest: (bet: HostBet) => void;
-  onRefundRequest: (bet: HostBet) => void;
+  onDeleteRequest: (betId: string) => void;
+  onRefundRequest: (betId: string) => void;
   isProcessing?: boolean;
   onEditRequest: (bet: HostBet) => void;
+  onUpdateTimer?: (bet: HostBet) => void;
+  onRefreshRequest?: () => void;
 }
 
 export default function HostBetController({ 
@@ -41,7 +46,9 @@ export default function HostBetController({
   onDeleteRequest, 
   onRefundRequest,
   isProcessing,
-  onEditRequest 
+  onEditRequest,
+  onUpdateTimer,
+  onRefreshRequest
 }: HostBetControllerProps) {
   const [localStatus, setLocalStatus] = useState<HostBet['status']>(bet.status);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -99,17 +106,32 @@ export default function HostBetController({
           </Text>
         </View>
 
-        <Text style={styles.questionText}>{bet.question}</Text>
-        
-        {bet.bet_options && bet.bet_options.length > 0 && (
-          <View style={styles.optionsRow}>
-            {bet.bet_options.map((opt, idx) => (
-              <Text key={opt.id} style={styles.optionText}>
-                {opt.label}{idx < bet.bet_options!.length - 1 ? ' • ' : ''}
-              </Text>
-            ))}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.questionText}>{bet.question}</Text>
+            
+            {bet.bet_options && bet.bet_options.length > 0 && (
+              <View style={styles.optionsRow}>
+                {bet.bet_options.map((opt, idx) => (
+                  <Text key={opt.id} style={styles.optionText}>
+                    {opt.label}{idx < bet.bet_options!.length - 1 ? ' • ' : ''}
+                  </Text>
+                ))}
+              </View>
+            )}
           </View>
-        )}
+
+          {bet.trigger_type === 'auto' && bet.lock_at && (
+            <View style={{ alignItems: 'flex-end', marginLeft: 12, minWidth: 80 }}>
+              <BetCountdown bet={bet} onZero={onRefreshRequest} mode="icon-only" />
+              <Text style={{ color: '#666', fontSize: 9, marginTop: 4, textAlign: 'right' }}>
+                Ends {new Date(bet.lock_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                {'\n'}
+                {new Date(bet.lock_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </View>
+          )}
+        </View>
 
         <Text style={styles.editHint}>TAP TO EDIT</Text>
       </TouchableOpacity>
@@ -126,11 +148,15 @@ export default function HostBetController({
           
           {menuVisible && (
             <View style={styles.popupMenu}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { onRefundRequest(bet); setMenuVisible(false); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onUpdateTimer?.(bet); setMenuVisible(false); }}>
+                <Text style={styles.menuItemText}>⏳ Update Timer</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onRefundRequest(bet.id); setMenuVisible(false); }}>
                 <Text style={styles.menuItemText}>💰 Refund (Void)</Text>
               </TouchableOpacity>
               <View style={styles.menuDivider} />
-              <TouchableOpacity style={styles.menuItem} onPress={() => { onDeleteRequest(bet); setMenuVisible(false); }}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { onDeleteRequest(bet.id); setMenuVisible(false); }}>
                 <Text style={styles.menuItemRedText}>🗑️ Delete & Refund</Text>
               </TouchableOpacity>
             </View>

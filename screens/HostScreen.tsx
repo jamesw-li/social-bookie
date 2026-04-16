@@ -6,6 +6,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../supabase';
 import EventSwitcher, { EventItem } from '../components/EventSwitcher';
 import HostEventController, { HostEvent } from '../components/HostEventController';
@@ -14,6 +15,21 @@ import EventFormModal from '../components/EventFormModal';
 import LedgerTab from '../components/LedgerTab';
 import BackButton from '../components/BackButton';
 
+const FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"';
+
+const webInputStyle: any = Platform.OS === 'web' ? {
+  backgroundColor: '#121212',
+  color: '#fff',
+  borderRadius: '8px',
+  padding: '14px',
+  border: '1px solid #333',
+  fontSize: '16px',
+  width: '100%',
+  outline: 'none',
+  fontFamily: FONT_STACK,
+  boxSizing: 'border-box'
+} : {};
+
 export default function HostScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [eventsList, setEventsList] = useState<EventItem[]>([]);
@@ -21,6 +37,15 @@ export default function HostScreen({ navigation }: any) {
   const [eventFormVisible, setEventFormVisible] = useState(false);
   const [editingEvent, setEditingEvent] = useState<HostEvent | null>(null);
   const [hostEventScope, setHostEventScope] = useState<string | null>(null);
+
+  // --- BET AUTO-LOCK STATES ---
+  const [betTriggerType, setBetTriggerType] = useState<'manual' | 'auto'>('manual');
+  const [betDateInput, setBetDateInput] = useState('');
+  const [betTimeInput, setBetTimeInput] = useState('');
+  const [betDateObj, setBetDateObj] = useState(new Date());
+  const [betDurationInput, setBetDurationInput] = useState(''); // Minutes timer
+  const [showBetDatePicker, setShowBetDatePicker] = useState(false);
+  const [showBetTimePicker, setShowBetTimePicker] = useState(false);
 
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
   const [bets, setBets] = useState<any[]>([]);
@@ -38,12 +63,14 @@ export default function HostScreen({ navigation }: any) {
 
   // Grading & Creation States
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
+  const [updateTimerModalVisible, setUpdateTimerModalVisible] = useState(false);
   const [selectedBet, setSelectedBet] = useState<any>(null);
   const [isGrading, setIsGrading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isUpdatingTimer, setIsUpdatingTimer] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<any>(null);
   const [playerActionSheetVisible, setPlayerActionSheetVisible] = useState(false);
   const [viewingPlayerLedger, setViewingPlayerLedger] = useState(false);
@@ -263,21 +290,21 @@ export default function HostScreen({ navigation }: any) {
       // 2. Fetch Regular House Bets (Active & History)
       const { data: betsData } = await supabase
         .from('bets')
-        .select(`id, question, status, event_id, created_at, type, wager_count, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
+        .select(`id, question, status, event_id, created_at, type, wager_count, trigger_type, lock_at, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
         .eq('campaign_id', campaignId)
         .in('status', ['open', 'locked', 'graded', 'canceled']);
 
       // 3. Fetch Approved P2P Bets (Active & History)
       const { data: approvedP2P } = await supabase
         .from('p2p_prop_bets')
-        .select('*, users!p2p_prop_bets_proposer_id_fkey(display_name)')
+        .select('*, users!p2p_prop_bets_proposer_id_fkey(display_name), trigger_type, lock_at')
         .eq('campaign_id', campaignId)
         .in('status', ['open', 'locked', 'resolved', 'canceled']);
 
       // 4. Fetch Blind Matchups (Active & History)
       const { data: blindData } = await supabase
         .from('blind_matchups')
-        .select('*')
+        .select('*, trigger_type, lock_at')
         .eq('campaign_id', campaignId)
         .in('status', ['open', 'matched', 'resolved', 'canceled']);
 
@@ -420,12 +447,34 @@ export default function HostScreen({ navigation }: any) {
   }
 
   function handleEditUnifiedPitch(pitch: any) {
+    const rawData = pitch.raw || pitch;
     // Reset form first
     setNewQuestion(pitch.question || '');
     setBetType(pitch.type);
     setHostEventScope(pitch.event_id || getGlobalEventId());
     setEditingPitch(pitch);
     setEditingEvent(null);
+
+    // Initialize Auto-Lock States
+    const trigger = rawData.trigger_type || 'manual';
+    setBetTriggerType(trigger);
+    if (rawData.lock_at) {
+      const d = new Date(rawData.lock_at);
+      setBetDateObj(d);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      setBetDateInput(`${yyyy}-${mm}-${dd}`);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      setBetTimeInput(`${hh}:${min}`);
+      setBetDurationInput('');
+    } else {
+      setBetDateObj(new Date());
+      setBetDateInput('');
+      setBetTimeInput('');
+      setBetDurationInput('');
+    }
 
     if (pitch.sourceTable === 'bets') {
       const betOptions = pitch.bet_options || pitch.raw?.bet_options || [];
@@ -444,6 +493,37 @@ export default function HostScreen({ navigation }: any) {
     }
 
     setCreateModalVisible(true);
+  }
+
+  function handleUpdateTimer(pitch: any) {
+    // Reset form for timer-only update
+    setEditingPitch(pitch);
+    setEditingEvent(null);
+    setIsUpdatingTimer(true);
+    
+    const rawData = pitch.raw || pitch;
+    const trigger = rawData.trigger_type || 'manual';
+    setBetTriggerType(trigger);
+    
+    if (rawData.lock_at) {
+      const d = new Date(rawData.lock_at);
+      setBetDateObj(d);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      setBetDateInput(`${yyyy}-${mm}-${dd}`);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const min = String(d.getMinutes()).padStart(2, '0');
+      setBetTimeInput(`${hh}:${min}`);
+      setBetDurationInput('');
+    } else {
+      setBetDateObj(new Date());
+      setBetDateInput('');
+      setBetTimeInput('');
+      setBetDurationInput('');
+    }
+
+    setUpdateTimerModalVisible(true);
   }
 
   // --- WALLET ADJUSTMENT LOGIC ---
@@ -513,6 +593,39 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
+  async function handleSaveTimerOnly() {
+    if (!editingPitch) return;
+    
+    let finalLockAt: string | null = null;
+    if (betTriggerType === 'auto') {
+      if (isNaN(betDateObj.getTime())) {
+        const msg = 'Please set a valid lock time.';
+        return Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Invalid', msg);
+      }
+      finalLockAt = betDateObj.toISOString();
+    }
+
+    setIsCreating(true);
+    try {
+      const table = editingPitch.sourceTable || (editingPitch.isP2P ? 'p2p_prop_bets' : editingPitch.isBlind ? 'blind_matchups' : 'bets');
+      const { error } = await supabase.from(table).update({
+        trigger_type: betTriggerType,
+        lock_at: finalLockAt
+      }).eq('id', editingPitch.id);
+
+      if (error) throw error;
+
+      setUpdateTimerModalVisible(false);
+      setEditingPitch(null);
+      setIsUpdatingTimer(false);
+      fetchHostData(activeEventId, true);
+    } catch (err: any) {
+      Platform.OS === 'web' ? window.alert(`Error\n\n${err.message}`) : Alert.alert('Error', err.message);
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   const updateP2PMultiplier = (val: string) => {
     const sanitized = sanitizeNumber(val);
     setP2pMultiplier(sanitized);
@@ -548,7 +661,72 @@ export default function HostScreen({ navigation }: any) {
     setNewOptions(newOptions.map(opt => opt.id === id ? { ...opt, [field]: value } : opt));
   }
 
+  const onBetDateChange = (event: any, selectedDate?: Date) => {
+    setShowBetDatePicker(false);
+    if (selectedDate) {
+      const newD = new Date(betDateObj);
+      newD.setFullYear(selectedDate.getFullYear());
+      newD.setMonth(selectedDate.getMonth());
+      newD.setDate(selectedDate.getDate());
+      setBetDateObj(newD);
+      
+      const yyyy = newD.getFullYear();
+      const mm = String(newD.getMonth() + 1).padStart(2, '0');
+      const dd = String(newD.getDate()).padStart(2, '0');
+      setBetDateInput(`${yyyy}-${mm}-${dd}`);
+      setBetDurationInput(''); // Clear duration if manual date set
+    }
+  };
+
+  const onBetTimeChange = (event: any, selectedTime?: Date) => {
+    setShowBetTimePicker(false);
+    if (selectedTime) {
+      const newD = new Date(betDateObj);
+      newD.setHours(selectedTime.getHours());
+      newD.setMinutes(selectedTime.getMinutes());
+      newD.setSeconds(0);
+      newD.setMilliseconds(0);
+      setBetDateObj(newD);
+
+      const hh = String(newD.getHours()).padStart(2, '0');
+      const min = String(newD.getMinutes()).padStart(2, '0');
+      setBetTimeInput(`${hh}:${min}`);
+      setBetDurationInput(''); // Clear duration if manual time set
+    }
+  };
+
+  const handleDurationChange = (val: string) => {
+    const sanitized = val.replace(/[^0-9]/g, '');
+    setBetDurationInput(sanitized);
+    if (sanitized) {
+      const minutes = parseInt(sanitized);
+      const newD = new Date();
+      newD.setMinutes(newD.getMinutes() + minutes);
+      newD.setSeconds(0);
+      newD.setMilliseconds(0);
+      setBetDateObj(newD);
+
+      const yyyy = newD.getFullYear();
+      const mm = String(newD.getMonth() + 1).padStart(2, '0');
+      const dd = String(newD.getDate()).padStart(2, '0');
+      setBetDateInput(`${yyyy}-${mm}-${dd}`);
+
+      const hh = String(newD.getHours()).padStart(2, '0');
+      const min = String(newD.getMinutes()).padStart(2, '0');
+      setBetTimeInput(`${hh}:${min}`);
+    }
+  };
+
   async function handlePublishBet() {
+    let finalLockAt: string | null = null;
+    if (betTriggerType === 'auto') {
+      if (isNaN(betDateObj.getTime())) {
+        const msg = 'Please set a valid lock time.';
+        return Platform.OS === 'web' ? window.alert(msg) : Alert.alert('Invalid', msg);
+      }
+      finalLockAt = betDateObj.toISOString();
+    }
+
     // --- BLIND MATCH PUBLISH LOGIC ---
     if (betType === 'blind') {
       if (!newQuestion.trim() || !p2pOptionA.trim() || !p2pOptionB.trim()) {
@@ -570,7 +748,6 @@ export default function HostScreen({ navigation }: any) {
       setIsCreating(true);
       try {
         if (editingPitch && editingPitch.sourceTable === 'blind_matchups') {
-          // --- UPDATE EXISTING BLIND PITCH ---
           const { error } = await supabase.from('blind_matchups').update({
             event_id: hostEventScope,
             question: newQuestion,
@@ -578,11 +755,12 @@ export default function HostScreen({ navigation }: any) {
             side_b_label: p2pOptionB,
             base_amount: baseAmt,
             user_1_bid_multiplier: multiAmt,
-            status: 'open'
+            status: 'open',
+            trigger_type: betTriggerType,
+            lock_at: finalLockAt
           }).eq('id', editingPitch.id);
           if (error) throw error;
         } else {
-          // --- INSERT NEW BLIND BET ---
           const { error } = await supabase.from('blind_matchups').insert([{
             campaign_id: activeCampaignId,
             event_id: hostEventScope,
@@ -592,13 +770,14 @@ export default function HostScreen({ navigation }: any) {
             base_amount: baseAmt,
             user_1_id: currentUserId,
             user_1_bid_multiplier: multiAmt,
-            status: 'open'
+            status: 'open',
+            trigger_type: betTriggerType,
+            lock_at: finalLockAt
           }]);
           if (error) throw error;
         }
 
-        setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setBlindBase('100'); setBlindMultiplier('2.0');
-        setEditingPitch(null);
+        setNewQuestion(''); setEditingPitch(null);
         setCreateModalVisible(false);
         fetchHostData(activeEventId, true);
       } catch (error: any) {
@@ -620,7 +799,6 @@ export default function HostScreen({ navigation }: any) {
         const msg = 'Wager must be > 0';
         return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
       }
-      // 🚨 FIX: Changed from <= 0 to <= 1
       if (isNaN(multiAmt) || multiAmt <= 1) {
         const msg = 'Multiplier must be greater than 1.0x';
         return Platform.OS === 'web' ? window.alert(`Invalid\n\n${msg}`) : Alert.alert('Invalid', msg);
@@ -629,7 +807,6 @@ export default function HostScreen({ navigation }: any) {
       setIsCreating(true);
       try {
         if (editingPitch && editingPitch.sourceTable === 'p2p_prop_bets') {
-          // --- UPDATE EXISTING P2P PITCH ---
           const { error } = await supabase.from('p2p_prop_bets').update({
             event_id: hostEventScope,
             question: newQuestion,
@@ -637,11 +814,12 @@ export default function HostScreen({ navigation }: any) {
             option_b_label: p2pOptionB,
             wager_amount: wagerAmt,
             multiplier: multiAmt,
-            status: 'open'
+            status: 'open',
+            trigger_type: betTriggerType,
+            lock_at: finalLockAt
           }).eq('id', editingPitch.id);
           if (error) throw error;
         } else {
-          // --- INSERT NEW P2P BET ---
           const { error } = await supabase.from('p2p_prop_bets').insert([{
             campaign_id: activeCampaignId,
             event_id: hostEventScope,
@@ -651,13 +829,14 @@ export default function HostScreen({ navigation }: any) {
             option_b_label: p2pOptionB,
             wager_amount: wagerAmt,
             multiplier: multiAmt,
-            status: 'open'
+            status: 'open',
+            trigger_type: betTriggerType,
+            lock_at: finalLockAt
           }]);
           if (error) throw error;
         }
 
-        setNewQuestion(''); setP2pOptionA('Yes'); setP2pOptionB('No'); setP2pWager('100'); setP2pMultiplier('2.0');
-        setEditingPitch(null);
+        setNewQuestion(''); setEditingPitch(null);
         setCreateModalVisible(false);
         fetchHostData(activeEventId, true);
       } catch (error: any) {
@@ -677,7 +856,6 @@ export default function HostScreen({ navigation }: any) {
       return Platform.OS === 'web' ? window.alert(`Hold up\n\n${msg}`) : Alert.alert('Hold up', msg);
     }
 
-    // 🚨 FIX: Added the odds validation loop for Host Prop/OU bets!
     for (const opt of validOptions) {
       const oddsValue = parseFloat(opt.odds);
       if (isNaN(oddsValue) || oddsValue <= 1) {
@@ -696,26 +874,40 @@ export default function HostScreen({ navigation }: any) {
         if (editingPitch && editingPitch.sourceTable === 'bets') {
           // --- UPDATE EXISTING HOUSE BET/PITCH ---
           
-          // 🚨 IF ALREADY LIVE (not pending), REFUND FIRST
-          if (editingPitch.status !== 'pending') {
-            const { error: voidError } = await supabase.rpc('void_bet_and_refund', { p_bet_id: editingPitch.id });
-            if (voidError) throw voidError;
-          }
+          if (isUpdatingTimer) {
+            const { error } = await supabase.from('bets').update({
+              trigger_type: betTriggerType,
+              lock_at: finalLockAt
+            }).eq('id', editingPitch.id);
+            if (error) throw error;
+          } else {
+            // 🚨 IF ALREADY LIVE (not pending), REFUND FIRST
+            if (editingPitch.status !== 'pending') {
+              const { error: voidError } = await supabase.rpc('void_bet_and_refund', { p_bet_id: editingPitch.id });
+              if (voidError) throw voidError;
+            }
 
-          const { error: betUpdateError } = await supabase
-            .from('bets')
-            .update({
-              event_id: hostEventScope,
-              type: betType,
-              question: newQuestion,
-              status: 'open'
-            })
-            .eq('id', editingPitch.id);
-          if (betUpdateError) throw betUpdateError;
-          finalBetId = editingPitch.id;
-          
-          // Delete old options and re-insert
-          await supabase.from('bet_options').delete().eq('bet_id', finalBetId);
+            const { error: betUpdateError } = await supabase
+              .from('bets')
+              .update({
+                event_id: hostEventScope,
+                type: betType,
+                question: newQuestion,
+                status: 'open',
+                trigger_type: betTriggerType,
+                lock_at: finalLockAt
+              })
+              .eq('id', editingPitch.id);
+            if (betUpdateError) throw betUpdateError;
+            finalBetId = editingPitch.id;
+            
+            // Delete old options and re-insert
+            await supabase.from('bet_options').delete().eq('bet_id', finalBetId);
+            const optionsToInsert = validOptions.map(opt => ({
+              bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
+            }));
+            await supabase.from('bet_options').insert(optionsToInsert);
+          }
         } else {
           // --- INSERT NEW HOUSE BET ---
           const { data: betData, error: betError } = await supabase
@@ -726,7 +918,9 @@ export default function HostScreen({ navigation }: any) {
               question: newQuestion,
               status: 'open',
               campaign_id: currentCampId,
-              creator_id: currentUserId
+              creator_id: currentUserId,
+              trigger_type: betTriggerType,
+              lock_at: finalLockAt
             }])
             .select().single();
           if (betError) throw betError;
@@ -735,15 +929,15 @@ export default function HostScreen({ navigation }: any) {
           if (editingPitch && editingPitch.sourceTable === 'guest_proposals') {
              await supabase.from('guest_proposals').update({ status: 'approved' }).eq('id', editingPitch.id);
           }
+
+          const optionsToInsert = validOptions.map(opt => ({
+            bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
+          }));
+          await supabase.from('bet_options').insert(optionsToInsert);
         }
 
-        const optionsToInsert = validOptions.map(opt => ({
-          bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
-        }));
-
-        await supabase.from('bet_options').insert(optionsToInsert);
-
         setNewQuestion(''); setEditingPitch(null); handleToggleBetType('prop');
+        setIsUpdatingTimer(false);
         setCreateModalVisible(false); fetchHostData(activeEventId, true);
       } catch (error: any) {
         Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
@@ -1073,7 +1267,17 @@ export default function HostScreen({ navigation }: any) {
         <View style={styles.subViewHeader}>
           <TouchableOpacity 
             style={styles.addBetBtnSmall} 
-            onPress={() => { setNewQuestion(''); setHostEventScope(currentFilterId); setCreateModalVisible(true); }}
+            onPress={() => { 
+              setNewQuestion(''); 
+              setHostEventScope(currentFilterId); 
+              setBetTriggerType('manual');
+              setBetDateInput('');
+              setBetTimeInput('');
+              setBetDurationInput('');
+              setBetDateObj(new Date());
+              setIsUpdatingTimer(false);
+              setCreateModalVisible(true); 
+            }}
           >
             <Text style={styles.addBetBtnTextSmall}>+ Push Bet</Text>
           </TouchableOpacity>
@@ -1114,7 +1318,9 @@ export default function HostScreen({ navigation }: any) {
               onGradeRequest={openGradeModal}
               onDeleteRequest={() => handleDeleteBet(item.id)}
               onRefundRequest={() => handleVoidBet(item.id)}
-              onEditRequest={(bet) => handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' })}
+              onEditRequest={(bet) => { setIsUpdatingTimer(false); handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' }); }}
+              onUpdateTimer={(bet) => handleUpdateTimer({ ...bet, sourceTable: 'bets' })}
+              onRefreshRequest={() => fetchHostData(activeEventId, true)}
             />
           ))
         ) : (
@@ -1140,7 +1346,9 @@ export default function HostScreen({ navigation }: any) {
               onGradeRequest={openGradeModal}
               onDeleteRequest={() => handleDeleteBet(item.id)}
               onRefundRequest={() => handleVoidBet(item.id)}
-              onEditRequest={(bet) => handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' })}
+              onEditRequest={(bet) => { setIsUpdatingTimer(false); handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' }); }}
+              onUpdateTimer={(bet) => handleUpdateTimer({ ...bet, sourceTable: 'bets' })}
+              onRefreshRequest={() => fetchHostData(activeEventId, true)}
             />
           ))
         ) : (
@@ -1506,6 +1714,112 @@ export default function HostScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={styles.label}>Locking Policy</Text>
+                <View style={styles.segmentContainer}>
+                  <TouchableOpacity
+                    style={[styles.segmentBtn, betTriggerType === 'manual' && styles.segmentBtnActive]}
+                    onPress={() => setBetTriggerType('manual')}
+                  >
+                    <Text style={[styles.segmentText, betTriggerType === 'manual' && styles.segmentTextActive]}>Manual</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.segmentBtn, betTriggerType === 'auto' && styles.segmentBtnActive]}
+                    onPress={() => setBetTriggerType('auto')}
+                  >
+                    <Text style={[styles.segmentText, betTriggerType === 'auto' && styles.segmentTextActive]}>Auto-Timer</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {betTriggerType === 'auto' && (
+                  <View style={{ marginTop: 10 }}>
+                    <Text style={styles.subLabel}>Add Timer (minutes from now)</Text>
+                    <TextInput
+                      style={[styles.input, { marginBottom: 15 }]}
+                      placeholder="e.g. 10"
+                      placeholderTextColor="#666"
+                      keyboardType="numeric"
+                      value={betDurationInput}
+                      onChangeText={handleDurationChange}
+                    />
+
+                    <View style={styles.timeRow}>
+                      <View style={styles.timeFieldContainer}>
+                        <Text style={styles.subLabel}>Date</Text>
+                        {Platform.OS === 'web' ? (
+                          <input
+                            type="date"
+                            value={betDateInput}
+                            onChange={(e: any) => {
+                              const val = e.target.value;
+                              setBetDateInput(val);
+                              try {
+                                const [y, m, d] = val.split('-').map(Number);
+                                const newD = new Date(betDateObj);
+                                newD.setFullYear(y, m - 1, d);
+                                setBetDateObj(newD);
+                                setBetDurationInput('');
+                              } catch(err) {}
+                            }}
+                            style={webInputStyle}
+                          />
+                        ) : (
+                          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetDatePicker(true)}>
+                            <Text style={styles.pickerTriggerText}>{betDateInput || 'YYYY-MM-DD'}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      <View style={styles.timeFieldContainer}>
+                        <Text style={styles.subLabel}>Time (24-hr)</Text>
+                        {Platform.OS === 'web' ? (
+                          <input
+                            type="time"
+                            value={betTimeInput}
+                            onChange={(e: any) => {
+                              const val = e.target.value;
+                              setBetTimeInput(val);
+                              try {
+                                const [h, m] = val.split(':').map(Number);
+                                const newD = new Date(betDateObj);
+                                newD.setHours(h, m);
+                                setBetDateObj(newD);
+                                setBetDurationInput('');
+                              } catch(err) {}
+                            }}
+                            style={webInputStyle}
+                          />
+                        ) : (
+                          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetTimePicker(true)}>
+                            <Text style={styles.pickerTriggerText}>{betTimeInput || 'HH:MM'}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+
+                    {showBetDatePicker && Platform.OS !== 'web' && (
+                      <DateTimePicker
+                        value={betDateObj}
+                        mode="date"
+                        display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                        themeVariant="dark"
+                        onChange={onBetDateChange}
+                      />
+                    )}
+                    {showBetTimePicker && Platform.OS !== 'web' && (
+                      <DateTimePicker
+                        value={betDateObj}
+                        mode="time"
+                        is24Hour={true}
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        themeVariant="dark"
+                        onChange={onBetTimeChange}
+                      />
+                    )}
+                  </View>
+                )}
+              </View>
+
               {betType === 'blind' ? (
                 <>
                   <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
@@ -1648,6 +1962,132 @@ export default function HostScreen({ navigation }: any) {
               disabled={!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment}
             >
               <Text style={styles.submitBtnText}>{isProcessingAdjustment ? 'Processing...' : 'Confirm Adjustment'}</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={updateTimerModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: '#1e1e1e' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Bet Timer</Text>
+              <TouchableOpacity onPress={() => { setUpdateTimerModalVisible(false); setEditingPitch(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={styles.label}>Question</Text>
+              <Text style={{ color: '#fff', fontSize: 16, marginBottom: 20 }}>{editingPitch?.question}</Text>
+
+              <Text style={styles.label}>Locking Policy</Text>
+              <View style={styles.segmentContainer}>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, betTriggerType === 'manual' && styles.segmentBtnActive]}
+                  onPress={() => setBetTriggerType('manual')}
+                >
+                  <Text style={[styles.segmentText, betTriggerType === 'manual' && styles.segmentTextActive]}>Manual</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.segmentBtn, betTriggerType === 'auto' && styles.segmentBtnActive]}
+                  onPress={() => setBetTriggerType('auto')}
+                >
+                  <Text style={[styles.segmentText, betTriggerType === 'auto' && styles.segmentTextActive]}>Auto-Timer</Text>
+                </TouchableOpacity>
+              </View>
+
+              {betTriggerType === 'auto' && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={styles.subLabel}>Add Timer (minutes from now)</Text>
+                  <TextInput
+                    style={[styles.input, { marginBottom: 15 }]}
+                    placeholder="e.g. 10"
+                    placeholderTextColor="#666"
+                    keyboardType="numeric"
+                    value={betDurationInput}
+                    onChangeText={handleDurationChange}
+                  />
+
+                  <View style={styles.timeRow}>
+                    <View style={styles.timeFieldContainer}>
+                      <Text style={styles.subLabel}>Date</Text>
+                      {Platform.OS === 'web' ? (
+                        <input
+                          type="date"
+                          value={betDateInput}
+                          onChange={(e: any) => {
+                            const val = e.target.value;
+                            setBetDateInput(val);
+                            try {
+                              const [y, m, d] = val.split('-').map(Number);
+                              const newD = new Date(betDateObj);
+                              newD.setFullYear(y, m - 1, d);
+                              setBetDateObj(newD);
+                              setBetDurationInput('');
+                            } catch(err) {}
+                          }}
+                          style={webInputStyle}
+                        />
+                      ) : (
+                        <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetDatePicker(true)}>
+                          <Text style={styles.pickerTriggerText}>{betDateInput || 'YYYY-MM-DD'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <View style={styles.timeFieldContainer}>
+                      <Text style={styles.subLabel}>Time (24-hr)</Text>
+                      {Platform.OS === 'web' ? (
+                        <input
+                          type="time"
+                          value={betTimeInput}
+                          onChange={(e: any) => {
+                            const val = e.target.value;
+                            setBetTimeInput(val);
+                            try {
+                              const [h, m] = val.split(':').map(Number);
+                              const newD = new Date(betDateObj);
+                              newD.setHours(h, m);
+                              setBetDateObj(newD);
+                              setBetDurationInput('');
+                            } catch(err) {}
+                          }}
+                          style={webInputStyle}
+                        />
+                      ) : (
+                        <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetTimePicker(true)}>
+                          <Text style={styles.pickerTriggerText}>{betTimeInput || 'HH:MM'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+
+                  {showBetDatePicker && Platform.OS !== 'web' && (
+                    <DateTimePicker
+                      value={betDateObj}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                      themeVariant="dark"
+                      onChange={onBetDateChange}
+                    />
+                  )}
+                  {showBetTimePicker && Platform.OS !== 'web' && (
+                    <DateTimePicker
+                      value={betDateObj}
+                      mode="time"
+                      is24Hour={true}
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      themeVariant="dark"
+                      onChange={onBetTimeChange}
+                    />
+                  )}
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity style={styles.submitBtn} onPress={handleSaveTimerOnly} disabled={isCreating}>
+              <Text style={styles.submitBtnText}>
+                {isCreating ? 'Saving...' : 'Update Timer'}
+              </Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -1921,5 +2361,60 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 8,
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#121212',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#333',
+    padding: 4,
+    marginBottom: 10,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  segmentBtnActive: {
+    backgroundColor: '#00D084',
+  },
+  segmentText: {
+    color: '#a0a0a0',
+    fontWeight: 'bold',
+  },
+  segmentTextActive: {
+    color: '#121212',
+  },
+  subLabel: {
+    color: '#a0a0a0',
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -5,
+    marginBottom: 10,
+  },
+  timeFieldContainer: {
+    flex: 1,
+    minWidth: 160,
+    marginHorizontal: 5,
+    marginBottom: 10,
+  },
+  pickerTrigger: {
+    backgroundColor: '#121212',
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#333',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  pickerTriggerText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });

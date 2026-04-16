@@ -13,6 +13,7 @@ import ActionTab from '../components/ActionTab';
 import StandingsTab from '../components/StandingsTab';
 import MyBetsTab from '../components/MyBetsTab';
 import BackButton from '../components/BackButton';
+import BetCountdown from '../components/BetCountdown';
 
 export default function DashboardScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
@@ -238,7 +239,10 @@ export default function DashboardScreen({ route, navigation }: any) {
 
       // Watchdog: Open any auto-timer events that should be live
       // 10s buffer matches the RPC logic to prevent race conditions/clock drift
-      await supabase.rpc('open_expired_auto_events');
+      await Promise.all([
+        supabase.rpc('open_expired_auto_events'),
+        supabase.rpc('lock_expired_auto_bets')
+      ]);
 
       setUserId(storedUserId);
       setCampaignId(storedCampaignId);
@@ -281,13 +285,13 @@ export default function DashboardScreen({ route, navigation }: any) {
 
       setPendingApprovals((pendingProps || 0) + (pendingP2P || 0) + (pendingBlind || 0));
 
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, wager_count, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, wager_count, trigger_type, lock_at, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
       if (betsData) setBets(betsData);
 
-      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter);
+      const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter);
       if (p2pData) setP2pBets(p2pData);
 
-      const { data: blindData } = await supabase.from('blind_matchups').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter);
+      const { data: blindData } = await supabase.from('blind_matchups').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter);
       if (blindData) setBlindMatchups(blindData);
 
       const { data: wagersData } = await supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId);
@@ -596,7 +600,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   const potentialWin = wagerAmount ? Math.floor(parseInt(wagerAmount) * (selectedOption?.multiplier || 1)) : 0;
 
-  const renderBetCard = ({ item }: { item: any }) => {
+    const renderBetCard = ({ item }: { item: any }) => {
     const existingWager = myWagers.find(w => String(w.bet_id) === String(item.id));
     const isOpen = item.status === 'open';
     const isEventActionable = item.event_id === null || activeEvent?.status === 'live';
@@ -605,6 +609,18 @@ export default function DashboardScreen({ route, navigation }: any) {
     const getPlayerName = (uid: string) => {
       const player = standings.find(s => s.user_id === uid);
       return player?.users?.display_name || 'Someone';
+    };
+
+    const renderLockTime = (bet: any) => {
+      if (bet.trigger_type !== 'auto' || !bet.lock_at) return null;
+      const d = new Date(bet.lock_at);
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return (
+        <Text style={{ color: '#666', fontSize: 10, marginTop: 4 }}>
+          Ends at: {dateStr} {timeStr}
+        </Text>
+      );
     };
 
     if (item.isBlind) {
@@ -616,9 +632,13 @@ export default function DashboardScreen({ route, navigation }: any) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.betQuestion}>{item.question}</Text>
-              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-                🎟️ {(item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)} {((item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                  🎟️ {(item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)} {((item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+                </Text>
+                {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
+              </View>
+              {renderLockTime(item)}
             </View>
             <View style={{ backgroundColor: '#BB86FC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
               <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🤝 BLIND</Text>
@@ -696,9 +716,13 @@ export default function DashboardScreen({ route, navigation }: any) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.betQuestion}>{item.question}</Text>
-              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-                🎟️ {(item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)} {((item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                  🎟️ {(item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)} {((item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+                </Text>
+                {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
+              </View>
+              {renderLockTime(item)}
             </View>
             <View style={{ backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
               <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
@@ -768,12 +792,16 @@ export default function DashboardScreen({ route, navigation }: any) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
              <Text style={styles.betQuestion}>{item.question}</Text>
-             <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-               🎟️ {item.wager_count || 0} { (item.wager_count || 0) === 1 ? 'BET' : 'BETS'} PLACED
-             </Text>
+             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+               <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                 🎟️ {item.wager_count || 0} { (item.wager_count || 0) === 1 ? 'BET' : 'BETS'} PLACED
+               </Text>
+               {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
+             </View>
+             {renderLockTime(item)}
           </View>
           <View style={[styles.statusBadge, isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' }]}>
-            <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}> {isOpen ? '🟢 OPEN' : '🔒 LOCKED'} </Text>
+            <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}> {isOpen ? '🟢' : '🔒 LOCKED'} </Text>
           </View>
         </View>
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import EventSwitcher, { EventItem } from './EventSwitcher';
 import EventCountdown from './EventCountdown';
+import BetCountdown from './BetCountdown';
 
 interface MyBetsTabProps {
   combinedTickets: any[];
@@ -83,6 +84,19 @@ export default function MyBetsTab({
     }
 
     const isActive = ['pending', 'open', 'locked', 'matched'].includes(wagerStatus);
+    const isWagerOpen = wagerStatus === 'pending' || wagerStatus === 'open';
+
+    const renderLockTime = (bet: any) => {
+      if (bet.trigger_type !== 'auto' || !bet.lock_at) return null;
+      const d = new Date(bet.lock_at);
+      const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return (
+        <Text style={{ color: '#666', fontSize: 10, marginTop: 4 }}>
+          Ends at: {dateStr} {timeStr}
+        </Text>
+      );
+    };
 
     return (
       <View style={[styles.card, { borderColor: statusColor, opacity: isActive ? 1 : 0.6 }]}>
@@ -95,9 +109,15 @@ export default function MyBetsTab({
               <Text style={[styles.typeLabel, { color: '#FFD700' }]}>🥊 P2P VS. {opponentName?.toUpperCase()}</Text>
             )}
             <Text style={styles.question}>{question}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {renderLockTime(item)}
+              {isWagerOpen && <BetCountdown bet={item} onZero={onRefreshRequest} mode="icon-only" />}
+            </View>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>{statusText}</Text>
+            <Text style={[styles.statusText, { color: statusColor }]}>
+              {isWagerOpen && item.trigger_type === 'auto' ? '🟢' : statusText}
+            </Text>
           </View>
         </View>
 
