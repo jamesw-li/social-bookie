@@ -1,12 +1,19 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
+import EventSwitcher, { EventItem } from './EventSwitcher';
 
 interface MyBetsTabProps {
   combinedTickets: any[];
   userId: string | null;
+  eventsList: EventItem[];
+  activeEventSwitchId: string | null;
+  onSelectEvent: (id: string) => void;
 }
 
-export default function MyBetsTab({ combinedTickets, userId }: MyBetsTabProps) {
+export default function MyBetsTab({ 
+  combinedTickets, userId, 
+  eventsList, activeEventSwitchId, onSelectEvent 
+}: MyBetsTabProps) {
   const renderTicket = ({ item }: { item: any }) => {
     const isP2P = item.type === 'p2p';
     const isBlind = item.type === 'blind';
@@ -112,8 +119,16 @@ export default function MyBetsTab({ combinedTickets, userId }: MyBetsTabProps) {
   return (
     <View style={styles.container}>
       <View style={styles.subHeader}>
-        <Text style={styles.title}>My Bets</Text>
-        <Text style={styles.subtitle}>Live Tickets</Text>
+        <View style={styles.subHeaderLeft}>
+          <Text style={styles.title}>My Bets</Text>
+          {eventsList.length > 0 && (
+            <EventSwitcher
+              events={eventsList}
+              activeEventId={activeEventSwitchId}
+              onSelectEvent={onSelectEvent}
+            />
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -140,25 +155,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d0d0d',
   },
   subHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 15,
     paddingTop: 16,
-    paddingBottom: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#1e1e1e',
-    marginBottom: 8,
+  },
+  subHeaderLeft: {
+    flex: 1,
+    paddingRight: 10,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#fff',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#3498db',
-    marginTop: 4,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginBottom: 6,
   },
   card: {
     backgroundColor: '#1e1e1e',

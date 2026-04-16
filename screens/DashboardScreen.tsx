@@ -834,7 +834,13 @@ export default function DashboardScreen({ route, navigation }: any) {
         )}
 
         {activeTab === 'bets' && (
-          <MyBetsTab combinedTickets={combinedTickets} userId={userId} />
+          <MyBetsTab 
+            combinedTickets={combinedTickets} 
+            userId={userId} 
+            eventsList={eventsList}
+            activeEventSwitchId={activeEventSwitchId}
+            onSelectEvent={(id) => { setActiveEventSwitchId(id); loadBoard(id); }}
+          />
         )}
 
         {/* ── BOTTOM NAV BAR ── */}

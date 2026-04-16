@@ -64,7 +64,6 @@ export default function ActionTab({
 
         {eventData.length > 0 ? (
           <View style={{ paddingBottom: 20 }}>
-            <Text style={styles.sectionHeader}>📅 Active Event Action</Text>
             {eventData.map(item => (
               <React.Fragment key={item.id}>{renderBetCard({ item })}</React.Fragment>
             ))}
