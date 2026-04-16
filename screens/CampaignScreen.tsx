@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, FlatList, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, Modal, ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -14,18 +14,21 @@ export default function CampaignScreen({ route, navigation }: any) {
  // Grab the params safely. If they don't exist, default to an empty string.
   const [userId, setUserId] = useState<string>(route.params?.userId || '');
   const [currentUserName, setCurrentUserName] = useState<string>(route.params?.userName || '');
+  const [isActionModalVisible, setIsActionModalVisible] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerLeft: () => null,    // Explicitly hide back button
-      headerBackVisible: false,  // Prevent native back button from showing after navigation
+      headerLeft: () => null,    
+      headerBackVisible: false,  
       headerRight: () => (
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })} 
-          style={{ marginRight: 5 }}
-        >
-          <Ionicons name="settings-outline" size={24} color="#00D084" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+          <TouchableOpacity onPress={() => setIsActionModalVisible(true)} style={styles.headerBtn}>
+            <MaterialCommunityIcons name="plus-circle-outline" size={26} color="#00D084" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings', { userId, currentName: currentUserName })}>
+            <MaterialCommunityIcons name="dots-vertical" size={26} color="#00D084" />
+          </TouchableOpacity>
+        </View>
       ),
     });
   }, [navigation, userId, currentUserName]);
@@ -71,11 +74,11 @@ export default function CampaignScreen({ route, navigation }: any) {
 
   async function fetchCampaigns() {
     try {
-      // 1. Fetch the campaigns this user is part of, WITH the new status column
       const { data, error } = await supabase
         .from('campaign_participants')
         .select(`
           campaign_id,
+          global_point_balance,
           campaigns (
             id,
             name,
@@ -87,12 +90,26 @@ export default function CampaignScreen({ route, navigation }: any) {
       if (error) throw error;
 
       if (data) {
-        // 2. Flatten the data and keep only active campaigns
-        const mapped = data.map((item: any) => ({
-          id: item.campaigns.id,
-          name: item.campaigns.name,
-          status: item.campaigns.status || 'active'
+        // 2. Map the data and fetch ranks for each active campaign
+        const mapped = await Promise.all(data.map(async (item: any) => {
+          const balance = item.global_point_balance || 0;
+          
+          // Fetch the rank (count of participants with higher balance + 1)
+          const { count } = await supabase
+            .from('campaign_participants')
+            .select('*', { count: 'exact', head: true })
+            .eq('campaign_id', item.campaign_id)
+            .gt('global_point_balance', balance);
+          
+          return {
+            id: item.campaigns.id,
+            name: item.campaigns.name,
+            status: item.campaigns.status || 'active',
+            points: balance,
+            rank: (count || 0) + 1
+          };
         }));
+
         setActiveCampaigns(mapped.filter((c: any) => c.status === 'active'));
       }
     } catch (error: any) {
@@ -204,140 +221,185 @@ export default function CampaignScreen({ route, navigation }: any) {
       console.error('Error joining event', error.message);
     }
   }
-  return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1, backgroundColor: '#121212' }} // Background color prevents white flashes
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined} // iOS uses padding, Android uses native resize
-    >
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1 }} // Forces scroll view to fill the screen
-        keyboardShouldPersistTaps="handled" // Lets buttons work while keyboard is open
-        bounces={false} // Stops iOS from "rubber-banding" the white space
-      >
-        <View style={[styles.container, { flex: 1 }]}>
-          <View style={{ padding: 20, paddingBottom: 0 }}>
-            <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+
+  const renderActionModal = () => (
+    <Modal visible={isActionModalVisible} transparent animationType="slide" onRequestClose={() => setIsActionModalVisible(false)}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsActionModalVisible(false)}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Join the Action</Text>
+            <TouchableOpacity onPress={() => setIsActionModalVisible(false)}>
+              <MaterialCommunityIcons name="close" size={24} color="#888" />
+            </TouchableOpacity>
           </View>
 
-              
-            {/* NEW: Join via Code Box */}
-            <View style={styles.joinBox}>
-              <TextInput
-                style={styles.joinInput}
-                placeholder="Enter 6-Digit Code"
-                placeholderTextColor="#666"
-                autoCapitalize="characters"
-                maxLength={6}
-                value={joinCode}
-                onChangeText={setJoinCode}
-              />
-        
-              <TouchableOpacity 
-                style={[styles.joinBtn, (!joinCode || isJoining) && { opacity: 0.5 }]} 
-                onPress={handleJoinWithCode}
-                disabled={!joinCode || isJoining}
-              >
-                <Text style={styles.joinBtnText}>{isJoining ? '...' : 'Join'}</Text>
-              </TouchableOpacity>
-              
-            </View>
+          {/* JOIN SECTION */}
+          <Text style={styles.modalLabel}>Got a room code?</Text>
+          <View style={styles.joinBoxModal}>
+            <TextInput
+              style={styles.joinInputModal}
+              placeholder="E.g. XYZ123"
+              placeholderTextColor="#666"
+              autoCapitalize="characters"
+              maxLength={6}
+              value={joinCode}
+              onChangeText={setJoinCode}
+            />
+            <TouchableOpacity 
+              style={[styles.joinBtnModal, (!joinCode || isJoining) && { opacity: 0.5 }]} 
+              onPress={() => { handleJoinWithCode(); setIsActionModalVisible(false); }}
+              disabled={!joinCode || isJoining}
+            >
+              <Text style={styles.joinBtnTextModal}>{isJoining ? '...' : 'Join'}</Text>
+            </TouchableOpacity>
+          </View>
 
-            
-            {!isAnonymous && (
-              <>
-                <Text style={styles.subtitle}>Or create your own board:</Text>
-                <TouchableOpacity 
-                  style={styles.createButton} 
-                  onPress={() => navigation.navigate('CreateGame')}
-                >
-                  <Text style={styles.createButtonText}>+ Host a New Game</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          
+          <View style={styles.modalDivider} />
 
-          {/* --- ZONE 1: LIVE ACTION (Mapped instead of FlatList) --- */}
+          {/* HOST SECTION */}
+          <TouchableOpacity 
+            style={styles.hostBtnModal} 
+            onPress={() => { setIsActionModalVisible(false); navigation.navigate('CreateGame'); }}
+          >
+            <Text style={styles.hostBtnTextModal}>👑 Host a New Game</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+      >
+        <View style={styles.container}>
+          <View style={styles.welcomeContainer}>
+            <Text style={styles.welcomeText}>Welcome, {currentUserName || 'Player'}!</Text>
+            <Text style={styles.heroText}>Enter the action.</Text>
+          </View>
+
           <Text style={styles.sectionTitle}>Live Action</Text>
-          <View style={{ flex: 1, marginBottom: 20 }}>
+          <View style={{ flex: 1 }}>
             {activeCampaigns.length === 0 ? (
-              <Text style={styles.emptyText}>No active events right now.</Text>
+              <View style={styles.emptyStateContainer}>
+                <Text style={styles.emptyText}>No live events right now.</Text>
+                <TouchableOpacity style={styles.secondaryJoinBtn} onPress={() => setIsActionModalVisible(true)}>
+                  <Text style={styles.secondaryJoinBtnText}>+ Start Something</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
               activeCampaigns.map((item) => (
                 <TouchableOpacity key={item.id} style={styles.campaignCard} onPress={() => selectCampaign(item)}>
-                  <Text style={styles.campaignName}>{item.name}</Text>
-                  <Text style={{ color: '#00D084', fontWeight: 'bold' }}>🟢 LIVE</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.campaignName} numberOfLines={1}>{item.name}</Text>
+                    <View style={styles.performanceStatsRow}>
+                      <Text style={styles.performanceStat}>🪙 {item.points.toLocaleString()} pts</Text>
+                      <Text style={styles.performanceStatSeparator}>•</Text>
+                      <Text style={[styles.performanceStat, item.rank === 1 && { color: '#FFD700', fontWeight: 'bold' }]}>
+                        🏆 Rank #{item.rank}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.liveBadge}>
+                    <Text style={styles.liveBadgeText}>LIVE</Text>
+                  </View>
                 </TouchableOpacity>
               ))
             )}
           </View>
-
-
-
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+
+      {renderActionModal()}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', padding: 20 },
-  welcomeText: { fontSize: 18, color: '#00D084', fontWeight: 'bold', marginBottom: 5, marginTop: 10 },
-  card: { backgroundColor: '#1e1e1e', padding: 20, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
-  cardText: { fontSize: 18, color: '#fff', fontWeight: 'bold' },
-  createButton: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginBottom: 25 },
-  createButtonText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
-  subtitle: { color: '#a0a0a0', marginBottom: 15, fontSize: 16 },
-  sectionTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-  emptyText: { color: '#666', fontStyle: 'italic', marginBottom: 20 },
+  container: { flex: 1, backgroundColor: '#121212', padding: 25 },
+  welcomeContainer: { marginBottom: 30, marginTop: 10 },
+  welcomeText: { fontSize: 16, color: '#00D084', fontWeight: 'bold' },
+  heroText: { fontSize: 32, fontWeight: 'bold', color: '#fff', marginTop: 4 },
+  sectionTitle: { color: '#666', fontSize: 12, fontWeight: 'bold', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
+  emptyStateContainer: { alignItems: 'center', marginTop: 40 },
+  emptyText: { color: '#666', fontSize: 15, fontStyle: 'italic', marginBottom: 20 },
+  secondaryJoinBtn: { backgroundColor: '#1e1e1e', borderWidth: 1, borderColor: '#333', paddingVertical: 12, paddingHorizontal: 25, borderRadius: 20 },
+  secondaryJoinBtnText: { color: '#00D084', fontWeight: 'bold' },
   campaignCard: { 
     backgroundColor: '#1e1e1e', 
-    padding: 20, 
-    borderRadius: 10, 
+    padding: 22, 
+    borderRadius: 16, 
     marginBottom: 15, 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     borderWidth: 1, 
-    borderColor: '#333' 
-  },
-  campaignName: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  // --- JOIN BOX STYLES ---
-  joinBox: {
-    flexDirection: 'row',
-    marginTop: 5,
-    marginBottom: 25,
-    gap: 10,
-  },
-  joinInput: {
-    flex: 1,
-    backgroundColor: '#1e1e1e',
-    borderWidth: 1,
     borderColor: '#333',
-    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 3
+  },
+  campaignName: { fontSize: 19, fontWeight: 'bold', color: '#fff' },
+  performanceStatsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 },
+  performanceStat: { color: '#888', fontSize: 13 },
+  performanceStatSeparator: { color: '#444', fontSize: 13 },
+  liveBadge: { backgroundColor: 'rgba(0, 208, 132, 0.15)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12 },
+  liveBadgeText: { color: '#00D084', fontWeight: 'bold', fontSize: 10, letterSpacing: 0.5 },
+  headerBtn: { marginRight: 5 },
+  // MODAL STYLES
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  modalContent: { 
+    backgroundColor: '#1a1a1a', 
+    borderTopLeftRadius: 25, 
+    borderTopRightRadius: 25, 
+    padding: 25, 
+    paddingBottom: Platform.OS === 'ios' ? 50 : 35,
+    borderTopWidth: 1,
+    borderTopColor: '#333'
+  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
+  modalLabel: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  joinBoxModal: { 
+    flexDirection: Platform.OS === 'web' ? 'column' : 'row', // Vertical on web to avoid cutoff
+    gap: 12, 
+    marginBottom: 25 
+  },
+  joinInputModal: { 
+    flex: Platform.OS === 'web' ? 0 : 1, 
+    backgroundColor: '#121212', 
+    borderWidth: 1, 
+    borderColor: '#444', 
+    borderRadius: 12, 
     color: '#00D084',
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
-    paddingHorizontal: 15,
-    height: 50,
-    letterSpacing: 2,
-  },
-  joinBtn: {
-    backgroundColor: '#00D084',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 20,
-    borderRadius: 8,
-    height: 50,
+    height: 60,
+    letterSpacing: 2
   },
-  joinBtnText: {
-    color: '#000',
-    fontWeight: 'bold',
-    fontSize: 16,
+  joinBtnModal: { 
+    backgroundColor: '#00D084', 
+    paddingHorizontal: 25, 
+    borderRadius: 12, 
+    height: 60, 
+    justifyContent: 'center',
+    alignItems: 'center'
   },
-  pageTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
+  joinBtnTextModal: { color: '#000', fontWeight: 'bold', fontSize: 18 },
+  modalDivider: { height: 1, backgroundColor: '#333', marginVertical: 15, marginBottom: 30 },
+  hostBtnModal: { 
+    backgroundColor: 'transparent', 
+    borderWidth: 2, 
+    borderColor: '#BB86FC', 
+    paddingVertical: 18, 
+    borderRadius: 12, 
+    alignItems: 'center' 
   },
+  hostBtnTextModal: { color: '#BB86FC', fontSize: 18, fontWeight: 'bold' },
 });
