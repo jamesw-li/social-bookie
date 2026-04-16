@@ -17,9 +17,10 @@ interface LedgerTabProps {
   userId: string | null;
   campaignId: string | null;
   displayName?: string; // When host views another player
+  hideHeader?: boolean;
 }
 
-export default function LedgerTab({ userId, campaignId, displayName }: LedgerTabProps) {
+export default function LedgerTab({ userId, campaignId, displayName, hideHeader }: LedgerTabProps) {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,14 +97,16 @@ export default function LedgerTab({ userId, campaignId, displayName }: LedgerTab
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>
-          {displayName ? `${displayName}'s Ledger` : '📒 My Ledger'}
-        </Text>
-        <TouchableOpacity onPress={fetchLedger} style={styles.refreshBtn}>
-          <Text style={styles.refreshText}>↻ Refresh</Text>
-        </TouchableOpacity>
-      </View>
+      {!hideHeader && (
+        <View style={styles.header}>
+          <Text style={styles.title}>
+            {displayName ? `${displayName}'s Ledger` : '📒 My Ledger'}
+          </Text>
+          <TouchableOpacity onPress={fetchLedger} style={styles.refreshBtn}>
+            <Text style={styles.refreshText}>↻ Refresh</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {entries.length === 0 ? (
         <View style={styles.center}>

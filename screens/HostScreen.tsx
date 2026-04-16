@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity,
-  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
+  ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, Dimensions
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1179,7 +1179,14 @@ export default function HostScreen({ navigation }: any) {
   const PlayerActionSheet = () => (
     <Modal visible={playerActionSheetVisible} transparent animationType="slide" onRequestClose={() => setPlayerActionSheetVisible(false)}>
       <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }} activeOpacity={1} onPress={() => !viewingPlayerLedger && setPlayerActionSheetVisible(false)}>
-        <View style={{ backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, minHeight: viewingPlayerLedger ? '80%' : 'auto' }}>
+        <View style={{ 
+          backgroundColor: '#1e1e1e', 
+          borderTopLeftRadius: 20, 
+          borderTopRightRadius: 20, 
+          padding: 20, 
+          minHeight: viewingPlayerLedger ? '80%' : 'auto',
+          maxHeight: Dimensions.get('window').height * 0.85 // 🚨 THE FIX: Constrain height to 85% of screen
+        }}>
           {!viewingPlayerLedger ? (
             <>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -1236,6 +1243,7 @@ export default function HostScreen({ navigation }: any) {
                 userId={selectedParticipant?.user_id}
                 campaignId={activeCampaignId}
                 displayName={selectedParticipant?.users?.display_name}
+                hideHeader={true}
               />
             </>
           )}
