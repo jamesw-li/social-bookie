@@ -79,6 +79,7 @@ export default function CampaignScreen({ route, navigation }: any) {
         .select(`
           campaign_id,
           global_point_balance,
+          is_favorite,
           campaigns (
             id,
             name,
@@ -106,19 +107,50 @@ export default function CampaignScreen({ route, navigation }: any) {
             name: item.campaigns.name,
             status: item.campaigns.status || 'active',
             points: balance,
-            rank: (count || 0) + 1
+            rank: (count || 0) + 1,
+            isFavorite: item.is_favorite || false
           };
         }));
 
-        setActiveCampaigns(mapped.filter((c: any) => c.status === 'active'));
+        const activeFavsFirst = mapped
+          .filter((c: any) => c.status === 'active')
+          .sort((a, b) => {
+            if (a.isFavorite === b.isFavorite) return 0;
+            return a.isFavorite ? -1 : 1;
+          });
+
+        setActiveCampaigns(activeFavsFirst);
       }
     } catch (error: any) {
       console.error("Error fetching campaigns:", error.message);
     }
   }
 
+  async function toggleFavorite(campaignId: string, currentStatus: boolean) {
+    try {
+      const { error } = await supabase
+        .from('campaign_participants')
+        .update({ is_favorite: !currentStatus })
+        .eq('campaign_id', campaignId)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      
+      // Optimistic update
+      setActiveCampaigns(prev => prev.map(c => 
+        c.id === campaignId ? { ...c, isFavorite: !currentStatus } : c
+      ).sort((a, b) => {
+        if (a.isFavorite === b.isFavorite) return 0;
+        return a.isFavorite ? -1 : 1;
+      }));
+    } catch (error: any) {
+      console.error("Error toggling favorite:", error.message);
+    }
+  }
+
   async function handleJoinWithCode() {
-    if (!joinCode || joinCode.length !== 6) {
+    const cleanCode = joinCode.replace('-', '').trim().toUpperCase();
+    if (!cleanCode || cleanCode.length !== 6) {
       return Alert.alert('Invalid Code', 'Please enter a valid 6-digit room code.');
     }
 
@@ -126,8 +158,6 @@ export default function CampaignScreen({ route, navigation }: any) {
     try {
       const userId = await AsyncStorage.getItem('userId');
       if (!userId) throw new Error("Could not find your User ID.");
-
-      const cleanCode = joinCode.trim().toUpperCase();
 
       // 1. Look up the campaign by the join code
       const { data: campaign, error: campaignError } = await supabase
@@ -194,6 +224,15 @@ export default function CampaignScreen({ route, navigation }: any) {
     }
   }
 
+  const handleJoinCodeChange = (text: string) => {
+    const cleanText = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    if (cleanText.length <= 3) {
+      setJoinCode(cleanText);
+    } else {
+      setJoinCode(cleanText.slice(0, 3) + '-' + cleanText.slice(3, 6));
+    }
+  };
+
   async function selectCampaign(campaign: any) {
     try {
       // 1. Check if the user is already a participant
@@ -253,45 +292,47 @@ export default function CampaignScreen({ route, navigation }: any) {
   const renderActionModal = () => (
     <Modal visible={isActionModalVisible} transparent animationType="slide" onRequestClose={() => setIsActionModalVisible(false)}>
       <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsActionModalVisible(false)}>
-        <View style={styles.modalContent}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Join the Action</Text>
-            <TouchableOpacity onPress={() => setIsActionModalVisible(false)}>
-              <MaterialCommunityIcons name="close" size={24} color="#888" />
-            </TouchableOpacity>
-          </View>
+        <TouchableOpacity activeOpacity={1} style={{ width: '100%' }}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Join the Action</Text>
+              <TouchableOpacity onPress={() => setIsActionModalVisible(false)}>
+                <MaterialCommunityIcons name="close" size={24} color="#888" />
+              </TouchableOpacity>
+            </View>
 
-          {/* JOIN SECTION */}
-          <Text style={styles.modalLabel}>Got a room code?</Text>
-          <View style={styles.joinBoxModal}>
-            <TextInput
-              style={styles.joinInputModal}
-              placeholder="E.g. XYZ123"
-              placeholderTextColor="#666"
-              autoCapitalize="characters"
-              maxLength={6}
-              value={joinCode}
-              onChangeText={setJoinCode}
-            />
+            {/* JOIN SECTION */}
+            <Text style={styles.modalLabel}>Got a room code?</Text>
+            <View style={styles.joinBoxModal}>
+              <TextInput
+                style={styles.joinInputModal}
+                placeholder="XYZ-123"
+                placeholderTextColor="#666"
+                autoCapitalize="characters"
+                maxLength={7}
+                value={joinCode}
+                onChangeText={handleJoinCodeChange}
+              />
+              <TouchableOpacity 
+                style={[styles.joinBtnModal, (!joinCode || isJoining) && { opacity: 0.5 }]} 
+                onPress={() => { handleJoinWithCode(); setIsActionModalVisible(false); }}
+                disabled={!joinCode || isJoining}
+              >
+                <Text style={styles.joinBtnTextModal}>{isJoining ? '...' : 'Join'}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalDivider} />
+
+            {/* HOST SECTION */}
             <TouchableOpacity 
-              style={[styles.joinBtnModal, (!joinCode || isJoining) && { opacity: 0.5 }]} 
-              onPress={() => { handleJoinWithCode(); setIsActionModalVisible(false); }}
-              disabled={!joinCode || isJoining}
+              style={styles.hostBtnModal} 
+              onPress={() => { setIsActionModalVisible(false); navigation.navigate('CreateGame'); }}
             >
-              <Text style={styles.joinBtnTextModal}>{isJoining ? '...' : 'Join'}</Text>
+              <Text style={styles.hostBtnTextModal}>👑 Host a New Game</Text>
             </TouchableOpacity>
           </View>
-
-          <View style={styles.modalDivider} />
-
-          {/* HOST SECTION */}
-          <TouchableOpacity 
-            style={styles.hostBtnModal} 
-            onPress={() => { setIsActionModalVisible(false); navigation.navigate('CreateGame'); }}
-          >
-            <Text style={styles.hostBtnTextModal}>👑 Host a New Game</Text>
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
   );
@@ -323,7 +364,22 @@ export default function CampaignScreen({ route, navigation }: any) {
               activeCampaigns.map((item) => (
                 <TouchableOpacity key={item.id} style={styles.campaignCard} onPress={() => selectCampaign(item)}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.campaignName} numberOfLines={1}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TouchableOpacity 
+                        onPress={(e) => { 
+                          e.stopPropagation(); 
+                          toggleFavorite(item.id, item.isFavorite); 
+                        }}
+                        style={{ padding: 4 }}
+                      >
+                        <Ionicons 
+                          name={item.isFavorite ? "star" : "star-outline"} 
+                          size={20} 
+                          color={item.isFavorite ? "#FFD700" : "#444"} 
+                        />
+                      </TouchableOpacity>
+                      <Text style={styles.campaignName} numberOfLines={1}>{item.name}</Text>
+                    </View>
                     <View style={styles.performanceStatsRow}>
                       <Text style={styles.performanceStat}>🪙 {item.points.toLocaleString()} pts</Text>
                       <Text style={styles.performanceStatSeparator}>•</Text>
@@ -380,7 +436,11 @@ const styles = StyleSheet.create({
   liveBadgeText: { color: '#00D084', fontWeight: 'bold', fontSize: 10, letterSpacing: 0.5 },
   headerBtn: { marginRight: 5 },
   // MODAL STYLES
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  modalOverlay: { 
+    flex: 1, 
+    backgroundColor: 'rgba(0,0,0,0.85)', 
+    justifyContent: 'flex-end' 
+  },
   modalContent: { 
     backgroundColor: '#1a1a1a', 
     borderTopLeftRadius: 25, 
@@ -394,12 +454,12 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
   modalLabel: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
   joinBoxModal: { 
-    flexDirection: Platform.OS === 'web' ? 'column' : 'row', // Vertical on web to avoid cutoff
+    flexDirection: 'column', // Stacked on all platforms for uniformity
     gap: 12, 
-    marginBottom: 25 
+    marginBottom: 25,
+    width: '100%'
   },
   joinInputModal: { 
-    flex: Platform.OS === 'web' ? 0 : 1, 
     backgroundColor: '#121212', 
     borderWidth: 1, 
     borderColor: '#444', 
@@ -409,13 +469,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     paddingHorizontal: 20,
     height: 60,
-    letterSpacing: 2
+    width: '100%',
+    letterSpacing: 2,
+    textAlign: 'center'
   },
   joinBtnModal: { 
     backgroundColor: '#00D084', 
     paddingHorizontal: 25, 
     borderRadius: 12, 
-    height: 60, 
+    height: 60,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center'
   },
@@ -425,8 +488,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent', 
     borderWidth: 2, 
     borderColor: '#BB86FC', 
-    paddingVertical: 18, 
+    height: 60, // Standardized height
+    width: '100%',
     borderRadius: 12, 
+    justifyContent: 'center',
     alignItems: 'center' 
   },
   hostBtnTextModal: { color: '#BB86FC', fontSize: 18, fontWeight: 'bold' },
