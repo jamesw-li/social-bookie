@@ -11,8 +11,24 @@ import {
   ScrollView,
   Platform
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../supabase';
 import { HostEvent } from './HostEventController';
+
+const FONT_STACK = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"';
+
+const webInputStyle: any = Platform.OS === 'web' ? {
+  backgroundColor: '#121212',
+  color: '#fff',
+  borderRadius: '8px',
+  padding: '14px',
+  border: '1px solid #333',
+  fontSize: '16px',
+  width: '100%',
+  outline: 'none',
+  fontFamily: FONT_STACK,
+  boxSizing: 'border-box' // 🚨 Prevents padding from causing overflow/cutoff
+} : {};
 
 interface EventFormModalProps {
   visible: boolean;
@@ -31,6 +47,10 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
   const [dateInput, setDateInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
 
+  const [dateObj, setDateObj] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -43,31 +63,66 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
         if (existingEvent.start_time) {
           try {
             const d = new Date(existingEvent.start_time);
-            // Format to YYYY-MM-DD
-            const yyyy = d.getUTCFullYear();
-            const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-            const dd = String(d.getUTCDate()).padStart(2, '0');
+            setDateObj(d);
+            
+            // Sync strings for web/manual fallback
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
             setDateInput(`${yyyy}-${mm}-${dd}`);
 
-            // Format to HH:MM
-            const hh = String(d.getUTCHours()).padStart(2, '0');
-            const min = String(d.getUTCMinutes()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const min = String(d.getMinutes()).padStart(2, '0');
             setTimeInput(`${hh}:${min}`);
           } catch (e) {
-            setDateInput('');
-            setTimeInput('');
+            setDateObj(new Date());
           }
         }
       } else {
-        // Reset form for create mode
         setName('');
         setDescription('');
         setTriggerType('manual');
-        setDateInput('');
-        setTimeInput('');
+        const now = new Date();
+        setDateObj(now);
+        
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        setDateInput(`${yyyy}-${mm}-${dd}`);
+        setTimeInput("12:00");
       }
     }
   }, [visible, existingEvent]);
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const newD = new Date(dateObj);
+      newD.setFullYear(selectedDate.getFullYear());
+      newD.setMonth(selectedDate.getMonth());
+      newD.setDate(selectedDate.getDate());
+      setDateObj(newD);
+      
+      const yyyy = newD.getFullYear();
+      const mm = String(newD.getMonth() + 1).padStart(2, '0');
+      const dd = String(newD.getDate()).padStart(2, '0');
+      setDateInput(`${yyyy}-${mm}-${dd}`);
+    }
+  };
+
+  const onTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      const newD = new Date(dateObj);
+      newD.setHours(selectedTime.getHours());
+      newD.setMinutes(selectedTime.getMinutes());
+      setDateObj(newD);
+
+      const hh = String(newD.getHours()).padStart(2, '0');
+      const min = String(newD.getMinutes()).padStart(2, '0');
+      setTimeInput(`${hh}:${min}`);
+    }
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -211,29 +266,87 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Start Time (UTC) {triggerType === 'manual' && '(Optional)'}</Text>
+              <Text style={styles.label}>Start Time {triggerType === 'manual' && '(Optional)'}</Text>
               <View style={styles.timeRow}>
-                <View style={{ flex: 1, marginRight: 10 }}>
-                  <Text style={styles.subLabel}>Date (YYYY-MM-DD)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#666"
-                    value={dateInput}
-                    onChangeText={setDateInput}
-                  />
+                {/* DATE PICKER */}
+                <View style={[styles.timeFieldContainer, { marginRight: Platform.OS === 'web' ? 0 : 10 }]}>
+                  <Text style={styles.subLabel}>Date</Text>
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="date"
+                      value={dateInput}
+                      onChange={(e: any) => {
+                        const val = e.target.value;
+                        setDateInput(val);
+                        try {
+                          const [y, m, d] = val.split('-').map(Number);
+                          const newD = new Date(dateObj);
+                          newD.setFullYear(y, m - 1, d);
+                          setDateObj(newD);
+                        } catch(err) {}
+                      }}
+                      style={webInputStyle}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowDatePicker(true)}>
+                      <Text style={styles.pickerTriggerText}>{dateInput || 'YYYY-MM-DD'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.subLabel}>Time (HH:MM)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="14:00"
-                    placeholderTextColor="#666"
-                    value={timeInput}
-                    onChangeText={setTimeInput}
-                  />
+
+                {/* TIME PICKER */}
+                <View style={styles.timeFieldContainer}>
+                  <Text style={styles.subLabel}>Time (24-hr)</Text>
+                  {Platform.OS === 'web' ? (
+                    <input
+                      type="time"
+                      value={timeInput}
+                      onChange={(e: any) => {
+                        const val = e.target.value;
+                        setTimeInput(val);
+                        try {
+                          const [h, m] = val.split(':').map(Number);
+                          const newD = new Date(dateObj);
+                          newD.setHours(h, m);
+                          setDateObj(newD);
+                        } catch(err) {}
+                      }}
+                      style={webInputStyle}
+                    />
+                  ) : (
+                    <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowTimePicker(true)}>
+                      <Text style={styles.pickerTriggerText}>{timeInput || 'HH:MM'}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
+
+              {/* NATIVE PICKERS (Mobile only) */}
+              {showDatePicker && Platform.OS !== 'web' && (
+                <DateTimePicker
+                  value={dateObj}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  themeVariant="dark"
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) onDateChange(event, selectedDate);
+                  }}
+                />
+              )}
+              {showTimePicker && Platform.OS !== 'web' && (
+                <DateTimePicker
+                  value={dateObj}
+                  mode="time"
+                  is24Hour={true}
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  themeVariant="dark"
+                  onChange={(event, selectedTime) => {
+                    setShowTimePicker(false);
+                    if (selectedTime) onTimeChange(event, selectedTime);
+                  }}
+                />
+              )}
 
               <TouchableOpacity
                 style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]}
@@ -325,7 +438,15 @@ const styles = StyleSheet.create({
   },
   timeRow: {
     flexDirection: 'row',
-    marginBottom: 20,
+    flexWrap: 'wrap',
+    marginHorizontal: -5,
+    marginBottom: 10,
+  },
+  timeFieldContainer: {
+    flex: 1,
+    minWidth: 160,
+    marginHorizontal: 5,
+    marginBottom: 10,
   },
   saveButton: {
     backgroundColor: '#00D084',
@@ -342,5 +463,18 @@ const styles = StyleSheet.create({
     color: '#121212',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  pickerTrigger: {
+    backgroundColor: '#121212',
+    borderRadius: 8,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#333',
+    justifyContent: 'center',
+    position: 'relative', // 🚨 Required for the overlay input
+  },
+  pickerTriggerText: {
+    color: '#fff',
+    fontSize: 16,
   },
 });
