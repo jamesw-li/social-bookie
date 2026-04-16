@@ -92,18 +92,21 @@ export default function HostBetController({
         activeOpacity={0.7}
       >
         <View style={styles.headerRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
             <Text style={[styles.statusBadge, getBadgeStyle()]}>{localStatus.toUpperCase()}</Text>
             {bet.isBlind && <Text style={styles.typeTag}>🤝 BLIND</Text>}
             {bet.isP2P && <Text style={styles.typeTag}>🥊 P2P</Text>}
+            <Text style={{ color: '#666', fontSize: 10, fontWeight: '700', marginLeft: 4 }}>
+              🎟️ {
+                (bet.isP2P) ? ((bet.side_a_user_id ? 1 : 0) + (bet.side_b_user_id ? 1 : 0)) :
+                (bet.isBlind) ? ((bet.user_1_id ? 1 : 0) + (bet.user_2_id ? 1 : 0)) :
+                (bet.wager_count || 0)
+              }
+            </Text>
           </View>
-          <Text style={{ color: '#666', fontSize: 10, fontWeight: '700' }}>
-            🎟️ {
-              (bet.isP2P) ? ((bet.side_a_user_id ? 1 : 0) + (bet.side_b_user_id ? 1 : 0)) :
-              (bet.isBlind) ? ((bet.user_1_id ? 1 : 0) + (bet.user_2_id ? 1 : 0)) :
-              (bet.wager_count || 0)
-            }
-          </Text>
+          <View style={{ alignItems: 'flex-end' }}>
+             <BetCountdown bet={bet} onZero={onRefreshRequest} />
+          </View>
         </View>
 
         <Text style={styles.questionText}>{bet.question}</Text>
@@ -118,16 +121,14 @@ export default function HostBetController({
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+          <Text style={styles.editHint}>TAP TO EDIT</Text>
           {bet.trigger_type === 'auto' && bet.lock_at && (
-            <Text style={{ color: '#666', fontSize: 10, marginRight: 10 }}>
-              Ends: {new Date(bet.lock_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(bet.lock_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            <Text style={{ color: '#666', fontSize: 9, textAlign: 'right' }}>
+              Ends {new Date(bet.lock_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(bet.lock_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           )}
-          <BetCountdown bet={bet} onZero={onRefreshRequest} />
         </View>
-
-        <Text style={styles.editHint}>TAP TO EDIT</Text>
       </TouchableOpacity>
 
       {/* Right: Controls */}
