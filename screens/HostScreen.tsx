@@ -105,6 +105,7 @@ export default function HostScreen({ navigation }: any) {
   };
 
   const [walletBalance, setWalletBalance] = useState(0);
+  const [editingPitch, setEditingPitch] = useState<any>(null);
 
   const getGlobalEventId = () => {
     const g = eventsList.find(e => e.name === 'Global');
@@ -264,7 +265,7 @@ export default function HostScreen({ navigation }: any) {
       }));
 
       // 5. Fetch Inbox 1: Ideas
-      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, users(display_name)').eq('campaign_id', campaignId).eq('status', 'pending');
+      const { data: propsData } = await supabase.from('guest_proposals').select('id, suggestion, event_id, created_at, users(display_name)').eq('campaign_id', campaignId).eq('status', 'pending');
       setProposals(propsData ?? []);
 
       // 6. Fetch Inbox 2: Challenges
@@ -301,54 +302,115 @@ export default function HostScreen({ navigation }: any) {
     }
   }
 
-  // --- IDEA ACTIONS (INBOX 1) ---
-  function convertProposalToBet(proposal: any) {
-    setNewQuestion(proposal.suggestion);
-    setActiveProposalId(proposal.id);
+  const getUnifiedPitches = () => {
+    const list: any[] = [];
+
+    // Props from guest_proposals
+    proposals.forEach(p => {
+      list.push({
+        id: p.id,
+        type: 'prop',
+        question: p.suggestion,
+        proposer: p.users?.display_name || 'Guest',
+        created_at: p.created_at,
+        sourceTable: 'guest_proposals',
+        raw: p,
+        event_id: p.event_id
+      });
+    });
+
+    // House Pushes from bets
+    pendingHouseBets.forEach(b => {
+      list.push({
+        id: b.id,
+        type: b.type, // 'prop' or 'over_under'
+        question: b.question,
+        proposer: b.users?.display_name || 'Host',
+        created_at: b.created_at,
+        options: b.bet_options,
+        sourceTable: 'bets',
+        raw: b,
+        event_id: b.event_id
+      });
+    });
+
+    // P2P Challenges
+    pendingPitches.forEach(p => {
+      list.push({
+        id: p.id,
+        type: 'p2p',
+        question: p.question,
+        proposer: p.users?.display_name || 'Guest',
+        created_at: p.created_at,
+        sourceTable: 'p2p_prop_bets',
+        raw: p,
+        event_id: p.event_id
+      });
+    });
+
+    // Blind Matchups
+    pendingBlindBets.forEach(b => {
+      list.push({
+        id: b.id,
+        type: 'blind',
+        question: b.question,
+        proposer: b.users?.display_name || 'Guest',
+        created_at: b.created_at,
+        sourceTable: 'blind_matchups',
+        raw: b,
+        event_id: b.event_id
+      });
+    });
+
+    return list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  };
+
+  // --- UNIFIED PITCH ACTIONS ---
+  async function handleApproveUnifiedPitch(pitch: any) {
+    try {
+      const { sourceTable, id } = pitch;
+      const { error } = await supabase.from(sourceTable).update({ status: 'open' }).eq('id', id);
+      if (error) throw error;
+      fetchHostData(activeEventId, true);
+    } catch (err: any) {
+      Alert.alert('Approval Failed', err.message);
+    }
+  }
+
+  async function handleRejectUnifiedPitch(pitch: any) {
+    try {
+      const { sourceTable, id } = pitch;
+      const { error } = await supabase.from(sourceTable).update({ status: 'rejected' }).eq('id', id);
+      if (error) throw error;
+      fetchHostData(activeEventId, true);
+    } catch (err: any) {
+      Alert.alert('Rejection Failed', err.message);
+    }
+  }
+
+  function handleEditUnifiedPitch(pitch: any) {
+    // Reset form first
+    setNewQuestion(pitch.question || '');
+    setBetType(pitch.type);
+    setHostEventScope(pitch.event_id || getGlobalEventId());
+    setEditingPitch(pitch);
+    setEditingEvent(null);
+
+    if (pitch.sourceTable === 'bets') {
+      const opts = (pitch.raw.bet_options || []).map((o: any, idx: number) => ({ 
+        id: idx + 1, 
+        label: o.label, 
+        odds: String(o.multiplier || '2.0') 
+      }));
+      setNewOptions(opts.length > 0 ? opts : [{ id: 1, label: '', odds: '2.0' }, { id: 2, label: '', odds: '2.0' }]);
+    } else if (pitch.sourceTable === 'p2p_prop_bets' || pitch.sourceTable === 'blind_matchups') {
+      setP2pOptionA(pitch.raw.option_a_label || pitch.raw.side_a_label || '');
+      setP2pOptionB(pitch.raw.option_b_label || pitch.raw.side_b_label || '');
+      setP2pWager(String(pitch.raw.wager_amount || pitch.raw.base_amount || ''));
+      setP2pMultiplier(String(pitch.raw.multiplier || pitch.raw.user_1_bid_multiplier || ''));
+    }
+
     setCreateModalVisible(true);
-  }
-
-  async function rejectProposal(id: string) {
-    await supabase.from('guest_proposals').update({ status: 'rejected' }).eq('id', id);
-    fetchHostData();
-  }
-
-  // --- CHALLENGE ACTIONS (INBOX 2) ---
-  async function handleApprovePitch(pitchId: string) {
-    try {
-      const { error } = await supabase.from('p2p_prop_bets').update({ status: 'open' }).eq('id', pitchId);
-      if (error) throw error;
-      Alert.alert('Approved!', 'The challenge is now live on the board.');
-      fetchHostData();
-    } catch (error: any) { Alert.alert('Error approving pitch', error.message); }
-  }
-
-  async function handleRejectPitch(pitchId: string) {
-    try {
-      const { error } = await supabase.from('p2p_prop_bets').delete().eq('id', pitchId);
-      if (error) throw error;
-      fetchHostData();
-    } catch (error: any) { Alert.alert('Error rejecting pitch', error.message); }
-  }
-
-  async function handleApproveHouseBet(betId: string) {
-    await supabase.from('bets').update({ status: 'open' }).eq('id', betId);
-    fetchHostData(); // Call your fetch function to refresh the screen
-  }
-
-  async function handleRejectHouseBet(betId: string) {
-    await supabase.from('bets').delete().eq('id', betId); // Trash it completely
-    fetchHostData();
-  }
-
-  async function handleApproveBlindBet(blindId: string) {
-    await supabase.from('blind_matchups').update({ status: 'open' }).eq('id', blindId);
-    fetchHostData();
-  }
-
-  async function handleRejectBlindBet(blindId: string) {
-    await supabase.from('blind_matchups').delete().eq('id', blindId);
-    fetchHostData();
   }
 
   const updateP2PMultiplier = (val: string) => {
@@ -879,78 +941,111 @@ export default function HostScreen({ navigation }: any) {
 
 
   const renderPitchesView = () => {
-    const hasData = proposals.length > 0 || pendingPitches.length > 0 || pendingHouseBets.length > 0 || pendingBlindBets.length > 0;
+    const allPitches = getUnifiedPitches();
+    const globalId = getGlobalEventId();
+    const currentFilterId = drillDownEventId || globalId;
+    
+    // Filter by Event
+    const filteredPitches = allPitches.filter(p => !p.event_id || p.event_id === currentFilterId);
+
+    const renderPitchItem = (pitch: any) => {
+      const isMenuOpen = editingPitch?.id === pitch.id;
+      
+      return (
+        <View key={`${pitch.sourceTable}-${pitch.id}`} style={styles.pitchCard}>
+          <View style={styles.pitchDetails}>
+            <View style={styles.pitchHeaderRow}>
+              <Text style={styles.pitchProposer}>👤 {pitch.proposer.toUpperCase()}</Text>
+              <Text style={styles.pitchTime}>{new Date(pitch.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+            </View>
+            <Text style={styles.pitchQuestion}>{pitch.question}</Text>
+            
+            {(pitch.options && pitch.options.length > 0) || (pitch.sourceTable === 'p2p_prop_bets' || pitch.sourceTable === 'blind_matchups') ? (
+              <View style={styles.pitchOptions}>
+                {pitch.options ? pitch.options.map((opt: any, idx: number) => (
+                  <Text key={idx} style={styles.pitchOptionText}>
+                    {opt.label}{opt.multiplier ? ` (${opt.multiplier}x)` : ''}{idx < pitch.options.length - 1 ? ' • ' : ''}
+                  </Text>
+                )) : (
+                  <Text style={styles.pitchOptionText}>
+                    {pitch.raw.option_a_label || pitch.raw.side_a_label} vs {pitch.raw.option_b_label || pitch.raw.side_b_label}
+                  </Text>
+                )}
+              </View>
+            ) : null}
+
+            {(pitch.type === 'p2p' || pitch.type === 'blind') && (
+              <Text style={styles.pitchTypeTag}>🏷️ {pitch.type.toUpperCase()}</Text>
+            )}
+          </View>
+
+          <View style={styles.pitchActions}>
+            <View style={{ width: '100%', alignItems: 'flex-end', position: 'relative', zIndex: 10 }}>
+              <TouchableOpacity onPress={() => setEditingPitch(editingPitch?.id === pitch.id ? null : pitch)} style={styles.pitchMenuBtn}>
+                <MaterialCommunityIcons name="dots-horizontal" size={20} color="#888" />
+              </TouchableOpacity>
+              
+              {isMenuOpen && (
+                <View style={styles.pitchPopupMenu}>
+                  <TouchableOpacity style={styles.pitchMenuItem} onPress={() => { handleEditUnifiedPitch(pitch); }}>
+                    <Text style={styles.pitchMenuItemText}>✏️ Edit Pitch</Text>
+                  </TouchableOpacity>
+                  <View style={styles.pitchMenuDivider} />
+                  <TouchableOpacity style={styles.pitchMenuItem} onPress={() => { handleRejectUnifiedPitch(pitch); setEditingPitch(null); }}>
+                    <Text style={styles.pitchMenuItemRed}>🗑️ Delete Pitch</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity 
+              style={styles.approveBtn} 
+              onPress={() => handleApproveUnifiedPitch(pitch)}
+            >
+              <Text style={styles.approveBtnText}>APPROVE</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    };
+
+    const renderGroup = (title: string, typeFilters: string[]) => {
+      const items = filteredPitches.filter(p => typeFilters.includes(p.type));
+      if (items.length === 0) return null;
+      return (
+        <View style={{ marginBottom: 25 }}>
+          <Text style={styles.groupTitle}>{title}</Text>
+          {items.map(renderPitchItem)}
+        </View>
+      );
+    };
 
     return (
       <View style={styles.subViewContainer}>
-        {!hasData && <Text style={styles.emptyText}>The inbox is currently empty.</Text>}
-
-        {/* Ideas */}
-        {proposals?.length > 0 && (
-          <View style={styles.inboxSection}>
-            <Text style={styles.inboxTitle}>💡 Guest Ideas ({proposals.length})</Text>
-            {proposals.map(prop => (
-              <View key={prop.id} style={styles.ideaCard}>
-                <Text style={styles.pitchText}>"{prop.suggestion}"</Text>
-                <Text style={styles.pitchAuthor}>- {prop.users.display_name}</Text>
-                <View style={styles.pitchActions}>
-                  <TouchableOpacity onPress={() => convertProposalToBet(prop)}><Text style={styles.approveText}>Approve</Text></TouchableOpacity>
-                  <TouchableOpacity onPress={() => rejectProposal(prop.id)}><Text style={styles.rejectText}>Trash</Text></TouchableOpacity>
-                </View>
-              </View>
+        <View style={{ marginBottom: 20 }}>
+          <Text style={styles.filterLabel}>Filter by Event:</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+            {eventsList.map((e: any) => (
+              <TouchableOpacity
+                key={e.id}
+                style={[styles.scopePill, currentFilterId === e.id && styles.scopePillActive]}
+                onPress={() => setDrillDownEventId(e.id)}
+              >
+                <Text style={[styles.scopePillText, currentFilterId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+              </TouchableOpacity>
             ))}
-          </View>
-        )}
+          </ScrollView>
+        </View>
 
-        {/* Challenges */}
-        {pendingPitches?.length > 0 && (
-          <View style={styles.inboxSection}>
-            <Text style={styles.inboxTitle}>🥊 Pending Challenges ({pendingPitches.length})</Text>
-            {pendingPitches.map(pitch => (
-              <View key={pitch.id} style={styles.pitchCard}>
-                <Text style={styles.pitchProposer}>{pitch.users?.display_name}</Text>
-                <Text style={styles.pitchQuestion}>{pitch.question}</Text>
-                <View style={styles.pitchActionRow}>
-                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectPitch(pitch.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApprovePitch(pitch.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* House Bets */}
-        {pendingHouseBets?.length > 0 && (
-          <View style={styles.inboxSection}>
-            <Text style={styles.inboxTitle}>🏠 Pending House ({pendingHouseBets.length})</Text>
-            {pendingHouseBets.map(bet => (
-              <View key={bet.id} style={styles.pitchCard}>
-                <Text style={styles.pitchProposer}>{bet.users?.display_name}</Text>
-                <Text style={styles.pitchQuestion}>{bet.question}</Text>
-                <View style={styles.pitchActionRow}>
-                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectHouseBet(bet.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApproveHouseBet(bet.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* Blind */}
-        {pendingBlindBets?.length > 0 && (
-          <View style={styles.inboxSection}>
-            <Text style={styles.inboxTitle}>🤝 Pending Blind ({pendingBlindBets.length})</Text>
-            {pendingBlindBets.map(blind => (
-              <View key={blind.id} style={styles.pitchCard}>
-                <Text style={styles.pitchProposer}>{blind.users?.display_name || 'Guest'}</Text>
-                <Text style={styles.pitchQuestion}>{blind.question}</Text>
-                <View style={styles.pitchActionRow}>
-                  <TouchableOpacity style={styles.actionBtnTrash} onPress={() => handleRejectBlindBet(blind.id)}><Text style={{color:'#fff'}}>Trash</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApproveBlindBet(blind.id)}><Text style={{color:'#000'}}>Approve</Text></TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
+        {filteredPitches.length === 0 ? (
+          <Text style={styles.emptyText}>No pending pitches for this event.</Text>
+        ) : (
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {renderGroup('PROPS', ['prop'])}
+            {renderGroup('OVER / UNDER', ['over_under'])}
+            {renderGroup('P2P CHALLENGES', ['p2p'])}
+            {renderGroup('BLIND MATCHUPS', ['blind'])}
+          </ScrollView>
         )}
       </View>
     );
@@ -1260,17 +1355,128 @@ const styles = StyleSheet.create({
   pitchCard: { backgroundColor: '#121212', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333', marginBottom: 10 },
   pitchProposer: { color: '#00D084', fontSize: 12, fontWeight: 'bold', marginBottom: 5, textTransform: 'uppercase' },
   pitchQuestion: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
-  pitchText: { color: '#fff', fontStyle: 'italic', fontSize: 16, marginBottom: 5 },
-  pitchAuthor: { color: '#a0a0a0', fontSize: 14, marginBottom: 15 },
-  pitchActions: { flexDirection: 'row', justifyContent: 'space-between' },
-  approveText: { color: '#00D084', fontWeight: 'bold' },
-  rejectText: { color: '#ff4444', fontWeight: 'bold' },
   pitchMathBox: { backgroundColor: '#1e1e1e', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#444', marginBottom: 15 },
-  pitchMathText: { color: '#a0a0a0', fontSize: 14, marginBottom: 4 },
-  pitchPotText: { color: '#FFD700', fontSize: 14, fontWeight: 'bold', marginTop: 5 },
-  pitchActionRow: { flexDirection: 'row', gap: 10 },
-  pitchBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-  pitchBtnText: { fontWeight: 'bold', fontSize: 14 },
+  pitchCard: {
+    backgroundColor: '#1E1E1E',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 12,
+    flexDirection: 'row',
+    overflow: 'visible',
+    minHeight: 110,
+  },
+  pitchDetails: {
+    flex: 1,
+    padding: 16,
+  },
+  pitchHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pitchProposer: {
+    color: '#00D084',
+    fontSize: 10,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  pitchTime: {
+    color: '#666',
+    fontSize: 10,
+  },
+  pitchQuestion: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  pitchOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  pitchOptionText: {
+    color: '#888',
+    fontSize: 11,
+  },
+  pitchTypeTag: {
+    color: '#BB86FC',
+    fontSize: 9,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(187, 134, 252, 0.1)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pitchActions: {
+    width: 100,
+    padding: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: '#2A2A2A',
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pitchMenuBtn: {
+    padding: 4,
+  },
+  pitchPopupMenu: {
+    position: 'absolute',
+    top: 30,
+    right: 0,
+    backgroundColor: '#2A2A2A',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#444',
+    width: 140,
+    zIndex: 100,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  pitchMenuItem: {
+    padding: 12,
+  },
+  pitchMenuItemText: {
+    color: '#FFF',
+    fontSize: 13,
+  },
+  pitchMenuItemRed: {
+    color: '#FF4444',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  pitchMenuDivider: {
+    height: 1,
+    backgroundColor: '#444',
+  },
+  approveBtn: {
+    backgroundColor: '#00D084',
+    paddingVertical: 8,
+    width: '100%',
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  approveBtnText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
+  groupTitle: {
+    color: '#444',
+    fontSize: 12,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+    marginBottom: 12,
+    marginTop: 10,
+    textTransform: 'uppercase',
+  },
 
   // MODAL & FORM STYLES
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4 },
