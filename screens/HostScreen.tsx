@@ -236,7 +236,7 @@ export default function HostScreen({ navigation }: any) {
       // 2. Fetch Regular House Bets (Active & History)
       const { data: betsData } = await supabase
         .from('bets')
-        .select(`id, question, status, event_id, created_at, bet_options!bet_options_bet_id_fkey ( id, label )`)
+        .select(`id, question, status, event_id, created_at, type, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
         .eq('campaign_id', campaignId)
         .in('status', ['open', 'locked', 'graded', 'canceled']);
 
@@ -401,17 +401,19 @@ export default function HostScreen({ navigation }: any) {
     setEditingEvent(null);
 
     if (pitch.sourceTable === 'bets') {
-      const opts = (pitch.raw.bet_options || []).map((o: any, idx: number) => ({ 
+      const betOptions = pitch.bet_options || pitch.raw?.bet_options || [];
+      const opts = betOptions.map((o: any, idx: number) => ({ 
         id: idx + 1, 
         label: o.label, 
         odds: String(o.multiplier || '2.0') 
       }));
       setNewOptions(opts.length > 0 ? opts : [{ id: 1, label: '', odds: '2.0' }, { id: 2, label: '', odds: '2.0' }]);
     } else if (pitch.sourceTable === 'p2p_prop_bets' || pitch.sourceTable === 'blind_matchups') {
-      setP2pOptionA(pitch.raw.option_a_label || pitch.raw.side_a_label || '');
-      setP2pOptionB(pitch.raw.option_b_label || pitch.raw.side_b_label || '');
-      setP2pWager(String(pitch.raw.wager_amount || pitch.raw.base_amount || ''));
-      setP2pMultiplier(String(pitch.raw.multiplier || pitch.raw.user_1_bid_multiplier || ''));
+      const rawData = pitch.raw || pitch;
+      setP2pOptionA(rawData.option_a_label || rawData.side_a_label || '');
+      setP2pOptionB(rawData.option_b_label || rawData.side_b_label || '');
+      setP2pWager(String(rawData.wager_amount || rawData.base_amount || ''));
+      setP2pMultiplier(String(rawData.multiplier || rawData.user_1_bid_multiplier || ''));
     }
 
     setCreateModalVisible(true);
@@ -658,13 +660,21 @@ export default function HostScreen({ navigation }: any) {
       }
     }
 
-    setIsCreating(true);
-    try {
+    const proceedWithUpdate = async () => {
+      setIsCreating(true);
+      try {
         const currentCampId = activeCampaignId || await AsyncStorage.getItem('campaignId');
         let finalBetId: string;
 
         if (editingPitch && editingPitch.sourceTable === 'bets') {
-          // --- UPDATE EXISTING HOUSE PITCH ---
+          // --- UPDATE EXISTING HOUSE BET/PITCH ---
+          
+          // 🚨 IF ALREADY LIVE (not pending), REFUND FIRST
+          if (editingPitch.status !== 'pending') {
+            const { error: voidError } = await supabase.rpc('void_bet_and_refund', { p_bet_id: editingPitch.id });
+            if (voidError) throw voidError;
+          }
+
           const { error: betUpdateError } = await supabase
             .from('bets')
             .update({
@@ -700,17 +710,34 @@ export default function HostScreen({ navigation }: any) {
           }
         }
 
-      const optionsToInsert = validOptions.map(opt => ({
-        bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
-      }));
+        const optionsToInsert = validOptions.map(opt => ({
+          bet_id: finalBetId, label: opt.label, multiplier: parseFloat(opt.odds) || 1.0
+        }));
 
-      await supabase.from('bet_options').insert(optionsToInsert);
+        await supabase.from('bet_options').insert(optionsToInsert);
 
-      setNewQuestion(''); setEditingPitch(null); handleToggleBetType('prop');
-      setCreateModalVisible(false); fetchHostData(activeEventId, true);
-    } catch (error: any) {
-      Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
-    } finally { setIsCreating(false); }
+        setNewQuestion(''); setEditingPitch(null); handleToggleBetType('prop');
+        setCreateModalVisible(false); fetchHostData(activeEventId, true);
+      } catch (error: any) {
+        Platform.OS === 'web' ? window.alert(`Error\n\n${error.message}`) : Alert.alert('Error', error.message);
+      } finally { setIsCreating(false); }
+    };
+
+    if (editingPitch && editingPitch.sourceTable === 'bets' && editingPitch.status !== 'pending') {
+      const title = 'Edit & Refund?';
+      const msg = 'This bet is already live. Changing it will REFUND all current players since the terms are changing. Proceed?';
+      
+      if (Platform.OS === 'web') {
+        if (window.confirm(`${title}\n\n${msg}`)) proceedWithUpdate();
+      } else {
+        Alert.alert(title, msg, [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit & Refund', style: 'destructive', onPress: proceedWithUpdate }
+        ]);
+      }
+    } else {
+      proceedWithUpdate();
+    }
   }
 
   // ==========================================
@@ -1052,6 +1079,7 @@ export default function HostScreen({ navigation }: any) {
               onGradeRequest={openGradeModal}
               onDeleteRequest={() => handleDeleteBet(item.id)}
               onRefundRequest={() => handleVoidBet(item.id)}
+              onEditRequest={(bet) => handleEditUnifiedPitch({ ...bet, sourceTable: 'bets' })}
             />
           ))
         ) : (
@@ -1462,7 +1490,11 @@ export default function HostScreen({ navigation }: any) {
                 </>
               )}
             </ScrollView>
-            <TouchableOpacity style={styles.submitBtn} onPress={handlePublishBet} disabled={isCreating}><Text style={styles.submitBtnText}>{isCreating ? 'Creating...' : 'Create Bet'}</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.submitBtn} onPress={handlePublishBet} disabled={isCreating}>
+              <Text style={styles.submitBtnText}>
+                {isCreating ? (editingPitch ? 'Saving...' : 'Creating...') : (editingPitch ? 'Save Bet' : 'Create Bet')}
+              </Text>
+            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>

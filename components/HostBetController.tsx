@@ -26,6 +26,7 @@ interface HostBetControllerProps {
   onDeleteRequest: (bet: HostBet) => void;
   onRefundRequest: (bet: HostBet) => void;
   isProcessing?: boolean;
+  onEditRequest: (bet: HostBet) => void;
 }
 
 export default function HostBetController({ 
@@ -34,7 +35,8 @@ export default function HostBetController({
   onGradeRequest, 
   onDeleteRequest, 
   onRefundRequest,
-  isProcessing 
+  isProcessing,
+  onEditRequest 
 }: HostBetControllerProps) {
   const [localStatus, setLocalStatus] = useState<HostBet['status']>(bet.status);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -71,8 +73,12 @@ export default function HostBetController({
 
   return (
     <View style={styles.container}>
-      {/* Left: Details */}
-      <View style={styles.detailsArea}>
+      {/* Left: Details (Tap to Edit) */}
+      <TouchableOpacity 
+        style={styles.detailsArea}
+        onPress={() => onEditRequest(bet)}
+        activeOpacity={0.7}
+      >
         <View style={styles.headerRow}>
           <Text style={[styles.statusBadge, getBadgeStyle()]}>{localStatus.toUpperCase()}</Text>
           {bet.isBlind && <Text style={styles.typeTag}>🤝 BLIND</Text>}
@@ -90,7 +96,9 @@ export default function HostBetController({
             ))}
           </View>
         )}
-      </View>
+
+        <Text style={styles.editHint}>TAP TO EDIT</Text>
+      </TouchableOpacity>
 
       {/* Right: Controls */}
       <View style={styles.controlsArea}>
@@ -283,5 +291,12 @@ const styles = StyleSheet.create({
   },
   gradeBtnTextDisabled: {
     color: '#555',
+  },
+  editHint: {
+    color: '#444',
+    fontSize: 9,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 8,
   },
 });
