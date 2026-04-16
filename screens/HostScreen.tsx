@@ -117,11 +117,10 @@ export default function HostScreen({ navigation }: any) {
     return g ? g.id : null;
   };
 
-  // Initialize drillDownEventId to Global once events are loaded
+  // Initialize drillDownEventId to the first event once events are loaded
   useEffect(() => {
     if (!drillDownEventId && eventsList.length > 0) {
-      const gId = getGlobalEventId();
-      if (gId) setDrillDownEventId(gId);
+      setDrillDownEventId(eventsList[0].id);
     }
   }, [eventsList, drillDownEventId]);
 
