@@ -268,7 +268,7 @@ export default function DashboardScreen({ route, navigation }: any) {
       const orFilter = `event_id.is.null${targetEventId ? `,event_id.eq.${targetEventId}` : ''}`;
 
       // Fetch pending approvals
-      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending').or(orFilter);
+      const { count: pendingProps } = await supabase.from('bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending');
       const { count: pendingP2P } = await supabase.from('p2p_prop_bets').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
       const { count: pendingBlind } = await supabase.from('blind_matchups').select('id', { count: 'exact' }).eq('campaign_id', storedCampaignId).eq('status', 'pending_approval');
 

@@ -128,6 +128,14 @@ export default function HostScreen({ navigation }: any) {
     return g ? g.id : null;
   };
 
+  const getGradingCount = (eventId: string) => {
+    return bets.filter(b => b.status === 'locked' && b.event_id === eventId).length;
+  };
+
+  const getPendingPitchesCount = (eventId: string) => {
+    return getUnifiedPitches().filter(p => p.event_id === eventId).length;
+  };
+
   // Initialize drillDownEventId to the first event once events are loaded
   useEffect(() => {
     if (!drillDownEventId && eventsList.length > 0) {
@@ -1066,15 +1074,23 @@ export default function HostScreen({ navigation }: any) {
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.filterLabel}>Filter by Event:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-            {eventsList.map((e: any) => (
-              <TouchableOpacity
-                key={e.id}
-                style={[styles.scopePill, drillDownEventId === e.id && styles.scopePillActive]}
-                onPress={() => setDrillDownEventId(e.id)}
-              >
-                <Text style={[styles.scopePillText, drillDownEventId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {eventsList.map((e: any) => {
+              const gradingCount = getGradingCount(e.id);
+              return (
+                <TouchableOpacity
+                  key={e.id}
+                  style={[styles.scopePill, drillDownEventId === e.id && styles.scopePillActive, { position: 'relative', overflow: 'visible' }]}
+                  onPress={() => setDrillDownEventId(e.id)}
+                >
+                  <Text style={[styles.scopePillText, drillDownEventId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+                  {gradingCount > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>{gradingCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -1214,15 +1230,23 @@ export default function HostScreen({ navigation }: any) {
         <View style={{ marginBottom: 20 }}>
           <Text style={styles.filterLabel}>Filter by Event:</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
-            {eventsList.map((e: any) => (
-              <TouchableOpacity
-                key={e.id}
-                style={[styles.scopePill, currentFilterId === e.id && styles.scopePillActive]}
-                onPress={() => setDrillDownEventId(e.id)}
-              >
-                <Text style={[styles.scopePillText, currentFilterId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {eventsList.map((e: any) => {
+              const pitchCount = getPendingPitchesCount(e.id);
+              return (
+                <TouchableOpacity
+                  key={e.id}
+                  style={[styles.scopePill, currentFilterId === e.id && styles.scopePillActive, { position: 'relative', overflow: 'visible' }]}
+                  onPress={() => setDrillDownEventId(e.id)}
+                >
+                  <Text style={[styles.scopePillText, currentFilterId === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+                  {pitchCount > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>{pitchCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -1822,6 +1846,20 @@ const styles = StyleSheet.create({
   actionBtnDanger: { backgroundColor: '#ff4444', padding: 10, borderRadius: 6 },
   actionBtnTextDanger: { color: '#fff', fontWeight: 'bold' },
   mathBox: { backgroundColor: 'rgba(0, 208, 132, 0.05)', padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#00D084', marginVertical: 15 },
+  badgeContainer: {
+    position: 'absolute',
+    top: 4,
+    right: 8,
+    zIndex: 10,
+  },
+  badgeText: {
+    color: '#ff4444',
+    fontSize: 11,
+    fontWeight: '900',
+    textShadowColor: 'rgba(255, 68, 68, 0.3)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 3,
+  },
 
   // DASHBOARD STYLES
   dashboardGrid: { padding: 15, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 40 },
