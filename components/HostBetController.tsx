@@ -136,10 +136,13 @@ export default function HostBetController({
         <View style={styles.toggleSection}>
           <Text style={[styles.toggleLabel, !isActive && styles.labelOpenActive]}>OPEN</Text>
           <Switch
+            key={isActive ? 'locked' : 'open'}
             value={isActive}
             onValueChange={handleToggle}
-            trackColor={{ false: '#333', true: 'rgba(0, 208, 132, 0.3)' }}
-            thumbColor={isActive ? '#00D084' : '#666'}
+            trackColor={{ false: 'rgba(0, 208, 132, 0.3)', true: '#991b1b' }}
+            thumbColor={isActive ? '#ff4444' : '#00D084'}
+            {...({ activeThumbColor: '#ff4444' } as any)}
+            ios_backgroundColor="rgba(0, 208, 132, 0.1)"
             disabled={isProcessing}
           />
           <Text style={[styles.toggleLabel, isActive && styles.labelLockedActive]}>
