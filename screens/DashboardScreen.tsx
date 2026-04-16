@@ -1054,29 +1054,18 @@ export default function DashboardScreen({ route, navigation }: any) {
                       <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Team B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
                     </View>
 
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1, minWidth: 80 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 12, marginBottom: 5 }}>Base</Text>
                         <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchBlindBase} onChangeText={(text) => setPitchBlindBase(sanitizeNumber(text))} placeholder="100" />
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                        <TextInput
-                          style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
-                          keyboardType="decimal-pad"
-                          value={pitchBlindMultiplier}
-                          onChangeText={updatePitchBlindMultiplier}
-                        />
+                      <View style={{ flex: 1, minWidth: 80 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 12, marginBottom: 5 }}>Odds (x)</Text>
+                        <TextInput style={[styles.p2pInput, { textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchBlindMultiplier} onChangeText={updatePitchBlindMultiplier} />
                       </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                        <TextInput
-                          style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]}
-                          keyboardType="number-pad"
-                          value={pitchBlindPercent}
-                          onChangeText={updatePitchBlindPercent}
-                        />
+                      <View style={{ flex: 1, minWidth: 80 }}>
+                        <Text style={{ color: '#BB86FC', fontSize: 12, marginBottom: 5 }}>Win (%)</Text>
+                        <TextInput style={[styles.p2pInput, { textAlign: 'center' }]} keyboardType="number-pad" value={pitchBlindPercent} onChangeText={updatePitchBlindPercent} />
                       </View>
                     </View>
 
@@ -1125,43 +1114,45 @@ export default function DashboardScreen({ route, navigation }: any) {
                             <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginTop: 4 }}>• Total Payout: {pot} pts</Text>
                           </View>
 
-                          {isOverleveraged ? (
-                            <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
-                              You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
-                            </Text>
-                          ) : (
-                            <Text style={{ color: '#666', fontSize: 11, fontStyle: 'italic', marginTop: 15, textAlign: 'center' }}>
-                              *Remember: The final payout and underdog risk will shift slightly because the final odds are the average of your bid and the challenger's bid.
-                            </Text>
-                          )}
+                            {isOverleveraged && (
+                              <Text style={{ color: '#ff4444', fontSize: 12, marginTop: 15, textAlign: 'center', fontWeight: 'bold' }}>
+                                You need {maxRisk - currentBalance} more points to cover the worst-case scenario.
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      })()}
+                    </>
+                  ) : pitchBetType === 'p2p' ? (
+                    <>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: 'bold', marginBottom: 10 }}>The Scenario</Text>
+                      <TextInput style={styles.p2pInput} placeholder="e.g. Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+                      
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                        <View style={{ flex: 1, minWidth: 120 }}>
+                          <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 5 }}>Option A</Text>
+                          <TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" />
                         </View>
-                      );
-                    })()}
-                  </>
-                ) : pitchBetType === 'p2p' ? (
-                  <>
-                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                    <TextInput style={styles.p2pInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+                        <View style={{ flex: 1, minWidth: 120 }}>
+                          <Text style={{ color: '#a0a0a0', fontSize: 12, marginBottom: 5 }}>Option B</Text>
+                          <TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" />
+                        </View>
+                      </View>
 
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                      <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
-                      <View style={{ flex: 1 }}><Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Risk</Text>
-                        <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={(text) => setPitchWager(sanitizeNumber(text))} />
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                        <View style={{ flex: 1, minWidth: 80 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 12, marginBottom: 5 }}>Risk</Text>
+                          <TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={setPitchWager} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 80 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 12, marginBottom: 5 }}>Odds (x)</Text>
+                          <TextInput style={[styles.p2pInput, { textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 80 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 12, marginBottom: 5 }}>Win (%)</Text>
+                          <TextInput style={[styles.p2pInput, { textAlign: 'center' }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text>
-                        <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text>
-                        <TextInput style={[styles.p2pInput, { paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} />
-                      </View>
-                    </View>
 
                     <View style={styles.mathBox}>
                       <Text style={{ color: '#a0a0a0', fontSize: 14, marginBottom: 8 }}>
@@ -1184,20 +1175,27 @@ export default function DashboardScreen({ route, navigation }: any) {
 
                     <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
                     {pitchOptions.map((opt) => (
-                      <View key={opt.id} style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                      <View key={opt.id} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 }}>
                         <TextInput
                           style={[
                             styles.p2pInput,
-                            { flex: 3, marginBottom: 0, paddingHorizontal: 10, fontSize: 15 },
+                            { flex: 3, minWidth: 150, marginBottom: 0, paddingHorizontal: 15 },
                             pitchBetType === 'over_under' && { backgroundColor: '#2a2a2a', color: '#a0a0a0' }
                           ]}
-                          placeholder="e.g., William"
+                          placeholder="Option Label"
                           placeholderTextColor="#666"
                           value={opt.label}
                           onChangeText={(text) => updatePitchOption(opt.id, 'label', text)}
                           editable={pitchBetType !== 'over_under'}
                         />
-                        <TextInput style={[styles.p2pInput, { flex: 2, marginBottom: 0, paddingHorizontal: 8, fontSize: 15, textAlign: 'center' }]} keyboardType="numeric" placeholder="2.0" placeholderTextColor="#666" value={opt.odds} onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} />
+                        <TextInput 
+                          style={[styles.p2pInput, { flex: 1, minWidth: 80, marginBottom: 0, textAlign: 'center' }]} 
+                          keyboardType="numeric" 
+                          placeholder="2.0" 
+                          placeholderTextColor="#666" 
+                          value={opt.odds} 
+                          onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} 
+                        />
                       </View>
                     ))}
 

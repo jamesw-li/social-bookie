@@ -1408,14 +1408,14 @@ export default function HostScreen({ navigation }: any) {
                 <>
                   <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
                   <TextInput style={styles.input} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Team A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Team B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.label}>Side A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.label}>Side B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text><TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" /></View>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={updateMultiplier}/></View>
-                    <View style={{ flex: 1 }}><Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={blindPercent} onChangeText={updatePercent}/></View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text><TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={updateMultiplier}/></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={blindPercent} onChangeText={updatePercent}/></View>
                   </View>
                 </>
               ) : betType === 'p2p' ? (
@@ -1426,10 +1426,10 @@ export default function HostScreen({ navigation }: any) {
                     <View style={{ flex: 1 }}><Text style={styles.label}>Option A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
                     <View style={{ flex: 1 }}><Text style={styles.label}>Option B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="No" placeholderTextColor="#666" /></View>
                   </View>
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Risk</Text><TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} /></View>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} /></View>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} /></View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Risk</Text><TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} /></View>
                   </View>
                 </>
               ) : (
@@ -1439,8 +1439,22 @@ export default function HostScreen({ navigation }: any) {
                   <Text style={styles.label}>Options & Payouts</Text>
                   {newOptions.map((opt) => (
                     <View key={opt.id} style={styles.optionRow}>
-                      <TextInput style={[styles.input, { flex: 3, marginRight: 8, marginBottom: 0 }]} value={opt.label} onChangeText={(text) => updateOption(opt.id, 'label', text)} editable={betType !== 'over_under'} />
-                      <TextInput style={[styles.input, { flex: 2, marginBottom: 0 }]} keyboardType="decimal-pad" value={opt.odds} onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))} />
+                      <TextInput 
+                        style={[styles.input, { flex: 3, minWidth: 150, marginRight: 8, marginBottom: 10 }]} 
+                        value={opt.label} 
+                        onChangeText={(text) => updateOption(opt.id, 'label', text)} 
+                        editable={betType !== 'over_under'} 
+                        placeholder="Option Name"
+                        placeholderTextColor="#666"
+                      />
+                      <TextInput 
+                        style={[styles.input, { flex: 1, minWidth: 80, marginBottom: 10, textAlign: 'center' }]} 
+                        keyboardType="decimal-pad" 
+                        value={opt.odds} 
+                        onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))} 
+                        placeholder="2.0"
+                        placeholderTextColor="#666"
+                      />
                     </View>
                   ))}
                   {betType === 'prop' && <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}><Text style={styles.addOptionText}>+ Add Another Option</Text></TouchableOpacity>}
@@ -1710,7 +1724,11 @@ const styles = StyleSheet.create({
   closeText: { color: '#ff4444', fontSize: 16, fontWeight: 'bold' },
   label: { color: '#fff', fontWeight: 'bold', marginBottom: 10, marginTop: 10 },
   input: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#333', marginBottom: 15 },
-  optionRow: { flexDirection: 'row', marginBottom: 10 },
+  optionRow: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    marginBottom: 0 
+  },
   addOptionBtn: { alignItems: 'center', paddingVertical: 10, marginBottom: 20 },
   addOptionText: { color: '#00D084', fontWeight: 'bold' },
   submitBtn: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginTop: 10 },
