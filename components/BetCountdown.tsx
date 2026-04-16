@@ -11,7 +11,7 @@ export interface BetCountdownItem {
 interface BetCountdownProps {
   bet: BetCountdownItem;
   onZero?: () => void;
-  mode?: 'full' | 'icon-only';
+  mode?: 'full' | 'icon-only' | 'status-only';
 }
 
 export default function BetCountdown({ bet, onZero, mode = 'full' }: BetCountdownProps) {
@@ -50,13 +50,17 @@ export default function BetCountdown({ bet, onZero, mode = 'full' }: BetCountdow
 
   if (!timeLeft) return null;
 
+  if (mode === 'status-only') {
+    return <Text style={styles.statusOnlyText}>{timeLeft}</Text>;
+  }
+
   if (mode === 'icon-only') {
-    return <Text style={styles.iconText}>⏳ {timeLeft}</Text>;
+    return <Text style={styles.iconText}>{timeLeft}</Text>;
   }
 
   return (
     <View style={styles.countdownBadge}>
-      <Text style={styles.countdownText}>⏳ LOCKS IN: {timeLeft}</Text>
+      <Text style={styles.countdownText}>LOCKS IN: {timeLeft}</Text>
     </View>
   );
 }
@@ -82,5 +86,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     marginLeft: 6
+  },
+  statusOnlyText: {
+    color: '#00D084',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4
   }
 });

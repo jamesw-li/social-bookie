@@ -623,6 +623,27 @@ export default function DashboardScreen({ route, navigation }: any) {
       );
     };
 
+    const renderStatus = (bet: any) => {
+      const open = bet.status === 'open';
+      if (!open) {
+        return (
+          <View style={[styles.statusBadge, { backgroundColor: 'rgba(255, 68, 68, 0.2)' }]}>
+            <Text style={{ color: '#ff4444', fontWeight: 'bold', fontSize: 10 }}>🔒 LOCKED</Text>
+          </View>
+        );
+      }
+      return (
+        <View style={[styles.statusBadge, { backgroundColor: 'rgba(0, 208, 132, 0.2)', flexDirection: 'row', alignItems: 'center' }]}>
+          <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 10 }}>🟢</Text>
+          {bet.trigger_type === 'auto' && bet.lock_at ? (
+            <BetCountdown bet={bet} onZero={() => loadBoard(activeEventSwitchId)} mode="status-only" />
+          ) : (
+            <Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 10, marginLeft: 4 }}>OPEN</Text>
+          )}
+        </View>
+      );
+    };
+
     if (item.isBlind) {
       const isCreator = item.user_1_id === userId;
       const isMatched = item.status === 'matched' || item.status === 'resolved';
@@ -632,16 +653,16 @@ export default function DashboardScreen({ route, navigation }: any) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.betQuestion}>{item.question}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-                  🎟️ {(item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)} {((item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
-                </Text>
-                {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
-              </View>
+              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                🎟️ {(item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)} {((item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+              </Text>
               {renderLockTime(item)}
             </View>
-            <View style={{ backgroundColor: '#BB86FC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
-              <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🤝 BLIND</Text>
+            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+              <View style={{ backgroundColor: '#BB86FC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🤝 BLIND</Text>
+              </View>
+              {!isMatched && renderStatus(item)}
             </View>
           </View>
 
@@ -716,16 +737,16 @@ export default function DashboardScreen({ route, navigation }: any) {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
             <View style={{ flex: 1 }}>
               <Text style={styles.betQuestion}>{item.question}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-                  🎟️ {(item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)} {((item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
-                </Text>
-                {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
-              </View>
+              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                🎟️ {(item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)} {((item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+              </Text>
               {renderLockTime(item)}
             </View>
-            <View style={{ backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
-              <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
+            <View style={{ alignItems: 'flex-end', gap: 6 }}>
+              <View style={{ backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
+              </View>
+              {renderStatus(item)}
             </View>
           </View>
 
@@ -792,17 +813,12 @@ export default function DashboardScreen({ route, navigation }: any) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
           <View style={{ flex: 1 }}>
              <Text style={styles.betQuestion}>{item.question}</Text>
-             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-               <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
-                 🎟️ {item.wager_count || 0} { (item.wager_count || 0) === 1 ? 'BET' : 'BETS'} PLACED
-               </Text>
-               {isOpen && <BetCountdown bet={item} onZero={() => loadBoard(activeEventSwitchId)} mode="icon-only" />}
-             </View>
+             <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+               🎟️ {item.wager_count || 0} { (item.wager_count || 0) === 1 ? 'BET' : 'BETS'} PLACED
+             </Text>
              {renderLockTime(item)}
           </View>
-          <View style={[styles.statusBadge, isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' }]}>
-            <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}> {isOpen ? '🟢' : '🔒 LOCKED'} </Text>
-          </View>
+          {renderStatus(item)}
         </View>
 
         {existingWager ? (
