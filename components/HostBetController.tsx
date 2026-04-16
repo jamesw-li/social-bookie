@@ -16,6 +16,7 @@ export interface HostBet {
   isP2P?: boolean;
   isBlind?: boolean;
   bet_options?: BetOption[];
+  wager_count?: number;
   event_name?: string;
 }
 
@@ -80,9 +81,18 @@ export default function HostBetController({
         activeOpacity={0.7}
       >
         <View style={styles.headerRow}>
-          <Text style={[styles.statusBadge, getBadgeStyle()]}>{localStatus.toUpperCase()}</Text>
-          {bet.isBlind && <Text style={styles.typeTag}>🤝 BLIND</Text>}
-          {bet.isP2P && <Text style={styles.typeTag}>🥊 P2P</Text>}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.statusBadge, getBadgeStyle()]}>{localStatus.toUpperCase()}</Text>
+            {bet.isBlind && <Text style={styles.typeTag}>🤝 BLIND</Text>}
+            {bet.isP2P && <Text style={styles.typeTag}>🥊 P2P</Text>}
+          </View>
+          <Text style={{ color: '#666', fontSize: 10, fontWeight: '700' }}>
+            🎟️ {
+              (bet.isP2P) ? ((bet.side_a_user_id ? 1 : 0) + (bet.side_b_user_id ? 1 : 0)) :
+              (bet.isBlind) ? ((bet.user_1_id ? 1 : 0) + (bet.user_2_id ? 1 : 0)) :
+              (bet.wager_count || 0)
+            }
+          </Text>
         </View>
 
         <Text style={styles.questionText}>{bet.question}</Text>

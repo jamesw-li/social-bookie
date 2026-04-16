@@ -236,7 +236,7 @@ export default function HostScreen({ navigation }: any) {
       // 2. Fetch Regular House Bets (Active & History)
       const { data: betsData } = await supabase
         .from('bets')
-        .select(`id, question, status, event_id, created_at, type, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
+        .select(`id, question, status, event_id, created_at, type, wager_count, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`)
         .eq('campaign_id', campaignId)
         .in('status', ['open', 'locked', 'graded', 'canceled']);
 

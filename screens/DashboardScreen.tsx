@@ -274,7 +274,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
       setPendingApprovals((pendingProps || 0) + (pendingP2P || 0) + (pendingBlind || 0));
 
-      const { data: betsData } = await supabase.from('bets').select(`id, question, status, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
+      const { data: betsData } = await supabase.from('bets').select(`id, question, status, wager_count, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter);
       if (betsData) setBets(betsData);
 
       const { data: p2pData } = await supabase.from('p2p_prop_bets').select('*').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter);
@@ -607,7 +607,12 @@ export default function DashboardScreen({ route, navigation }: any) {
       return (
         <View style={[styles.betCard, { borderColor: '#BB86FC', borderWidth: 2 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-            <Text style={[styles.betQuestion, { flex: 1 }]}>{item.question}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.betQuestion}>{item.question}</Text>
+              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                🎟️ {(item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)} {((item.user_1_id ? 1 : 0) + (item.user_2_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+              </Text>
+            </View>
             <View style={{ backgroundColor: '#BB86FC', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
               <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🤝 BLIND</Text>
             </View>
@@ -682,7 +687,12 @@ export default function DashboardScreen({ route, navigation }: any) {
       return (
         <View style={[styles.betCard, { borderColor: '#FFD700', borderWidth: 2 }, isLocked && { opacity: 0.8 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-            <Text style={[styles.betQuestion, { flex: 1 }]}>{item.question}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.betQuestion}>{item.question}</Text>
+              <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+                🎟️ {(item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)} {((item.side_a_user_id ? 1 : 0) + (item.side_b_user_id ? 1 : 0)) === 1 ? 'BET' : 'BETS'} PLACED
+              </Text>
+            </View>
             <View style={{ backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, height: 24 }}>
               <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 10 }}>🥊 PROP</Text>
             </View>
@@ -749,7 +759,12 @@ export default function DashboardScreen({ route, navigation }: any) {
     return (
       <View style={[styles.betCard, isLocked && { opacity: 0.9, borderColor: '#444' }]}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
-          <Text style={styles.betQuestion}>{item.question}</Text>
+          <View style={{ flex: 1 }}>
+             <Text style={styles.betQuestion}>{item.question}</Text>
+             <Text style={{ color: '#666', fontSize: 11, fontWeight: 'bold', marginTop: 4 }}>
+               🎟️ {item.wager_count || 0} { (item.wager_count || 0) === 1 ? 'BET' : 'BETS'} PLACED
+             </Text>
+          </View>
           <View style={[styles.statusBadge, isOpen ? { backgroundColor: 'rgba(0, 208, 132, 0.2)' } : { backgroundColor: 'rgba(255, 68, 68, 0.2)' }]}>
             <Text style={{ color: isOpen ? '#00D084' : '#ff4444', fontWeight: 'bold', fontSize: 10 }}> {isOpen ? '🟢 OPEN' : '🔒 LOCKED'} </Text>
           </View>
