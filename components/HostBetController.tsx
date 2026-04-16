@@ -77,7 +77,6 @@ export default function HostBetController({
           <Text style={[styles.statusBadge, getBadgeStyle()]}>{localStatus.toUpperCase()}</Text>
           {bet.isBlind && <Text style={styles.typeTag}>🤝 BLIND</Text>}
           {bet.isP2P && <Text style={styles.typeTag}>🥊 P2P</Text>}
-          <Text style={styles.eventTag} numberOfLines={1}>📍 {bet.event_name || 'Global'}</Text>
         </View>
 
         <Text style={styles.questionText}>{bet.question}</Text>
@@ -117,7 +116,7 @@ export default function HostBetController({
         </View>
 
         <View style={styles.toggleSection}>
-          <Text style={[styles.toggleLabel, !isActive && styles.labelSelected]}>OPEN</Text>
+          <Text style={[styles.toggleLabel, !isActive && styles.labelOpenActive]}>OPEN</Text>
           <Switch
             value={isActive}
             onValueChange={handleToggle}
@@ -125,7 +124,7 @@ export default function HostBetController({
             thumbColor={isActive ? '#00D084' : '#666'}
             disabled={isProcessing}
           />
-          <Text style={[styles.toggleLabel, isActive && styles.labelSelected]}>
+          <Text style={[styles.toggleLabel, isActive && styles.labelLockedActive]}>
             {bet.isBlind ? 'MATCH' : 'LOCK'}
           </Text>
         </View>
@@ -172,8 +171,8 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
-  badgeOpen: { backgroundColor: 'rgba(255, 255, 255, 0.1)', color: '#AAA' },
-  badgeActive: { backgroundColor: 'rgba(0, 208, 132, 0.2)', color: '#00D084' },
+  badgeOpen: { backgroundColor: 'rgba(0, 208, 132, 0.2)', color: '#00D084' },
+  badgeActive: { backgroundColor: 'rgba(255, 68, 68, 0.2)', color: '#FF4444' },
   badgeGraded: { backgroundColor: 'rgba(187, 134, 252, 0.2)', color: '#BB86FC' },
   badgeDefault: { backgroundColor: '#333', color: '#888' },
   typeTag: {
@@ -184,11 +183,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-  },
-  eventTag: {
-    color: '#666',
-    fontSize: 10,
-    flex: 1,
   },
   questionText: {
     color: '#FFF',
@@ -263,8 +257,11 @@ const styles = StyleSheet.create({
     color: '#444',
     marginVertical: 1,
   },
-  labelSelected: {
-    color: '#888',
+  labelOpenActive: {
+    color: '#00D084',
+  },
+  labelLockedActive: {
+    color: '#FF4444',
   },
   gradeBtn: {
     backgroundColor: '#00D084',
