@@ -111,7 +111,9 @@ export default function MyBetsTab({
             <Text style={styles.question}>{question}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {renderLockTime(item)}
-              {isWagerOpen && <BetCountdown bet={item} onZero={onRefreshRequest} mode="icon-only" />}
+              {isActive && item.trigger_type === 'auto' && (
+                <BetCountdown bet={item} onZero={onRefreshRequest} mode="icon-only" />
+              )}
             </View>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: statusBg, borderColor: statusColor }]}>

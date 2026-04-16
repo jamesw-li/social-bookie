@@ -9,8 +9,7 @@ SECURITY DEFINER
 AS $$
 BEGIN
     UPDATE events
-    SET status = 'live',
-        trigger_type = 'manual'
+    SET status = 'live'
     WHERE status = 'scheduled'
       AND trigger_type = 'auto'
       AND start_time <= (NOW() + interval '10 seconds');

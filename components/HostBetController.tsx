@@ -106,31 +106,25 @@ export default function HostBetController({
           </Text>
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.questionText}>{bet.question}</Text>
-            
-            {bet.bet_options && bet.bet_options.length > 0 && (
-              <View style={styles.optionsRow}>
-                {bet.bet_options.map((opt, idx) => (
-                  <Text key={opt.id} style={styles.optionText}>
-                    {opt.label}{idx < bet.bet_options!.length - 1 ? ' • ' : ''}
-                  </Text>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {bet.trigger_type === 'auto' && bet.lock_at && (
-            <View style={{ alignItems: 'flex-end', marginLeft: 12, minWidth: 80 }}>
-              <BetCountdown bet={bet} onZero={onRefreshRequest} mode="icon-only" />
-              <Text style={{ color: '#666', fontSize: 9, marginTop: 4, textAlign: 'right' }}>
-                Ends {new Date(bet.lock_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-                {'\n'}
-                {new Date(bet.lock_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <Text style={styles.questionText}>{bet.question}</Text>
+        
+        {bet.bet_options && bet.bet_options.length > 0 && (
+          <View style={styles.optionsRow}>
+            {bet.bet_options.map((opt, idx) => (
+              <Text key={opt.id} style={styles.optionText}>
+                {opt.label}{idx < bet.bet_options!.length - 1 ? ' • ' : ''}
               </Text>
-            </View>
+            ))}
+          </View>
+        )}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+          {bet.trigger_type === 'auto' && bet.lock_at && (
+            <Text style={{ color: '#666', fontSize: 10, marginRight: 10 }}>
+              Ends: {new Date(bet.lock_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(bet.lock_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
           )}
+          <BetCountdown bet={bet} onZero={onRefreshRequest} />
         </View>
 
         <Text style={styles.editHint}>TAP TO EDIT</Text>

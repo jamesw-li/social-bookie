@@ -3,18 +3,18 @@
 
 -- 1. Add columns to bets
 ALTER TABLE bets 
-ADD COLUMN trigger_type TEXT DEFAULT 'manual',
-ADD COLUMN lock_at TIMESTAMPTZ;
+ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'manual',
+ADD COLUMN IF NOT EXISTS lock_at TIMESTAMPTZ;
 
 -- 2. Add columns to p2p_prop_bets
 ALTER TABLE p2p_prop_bets 
-ADD COLUMN trigger_type TEXT DEFAULT 'manual',
-ADD COLUMN lock_at TIMESTAMPTZ;
+ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'manual',
+ADD COLUMN IF NOT EXISTS lock_at TIMESTAMPTZ;
 
 -- 3. Add columns to blind_matchups
 ALTER TABLE blind_matchups 
-ADD COLUMN trigger_type TEXT DEFAULT 'manual',
-ADD COLUMN lock_at TIMESTAMPTZ;
+ADD COLUMN IF NOT EXISTS trigger_type TEXT DEFAULT 'manual',
+ADD COLUMN IF NOT EXISTS lock_at TIMESTAMPTZ;
 
 -- 4. Ensure Realtime is enabled for these tables
 -- (In case they weren't added before, though they should be)
@@ -51,24 +51,21 @@ AS $$
 BEGIN
     -- Lock house bets
     UPDATE bets
-    SET status = 'locked',
-        trigger_type = 'manual'
+    SET status = 'locked'
     WHERE status = 'open'
       AND trigger_type = 'auto'
       AND lock_at <= (NOW() + interval '10 seconds');
 
     -- Lock P2P bets (only if not already matched/locked by users)
     UPDATE p2p_prop_bets
-    SET status = 'locked',
-        trigger_type = 'manual'
+    SET status = 'locked'
     WHERE status = 'open'
       AND trigger_type = 'auto'
       AND lock_at <= (NOW() + interval '10 seconds');
 
     -- Lock Blind Matchups
     UPDATE blind_matchups
-    SET status = 'locked',
-        trigger_type = 'manual'
+    SET status = 'locked'
     WHERE status = 'open'
       AND trigger_type = 'auto'
       AND lock_at <= (NOW() + interval '10 seconds');

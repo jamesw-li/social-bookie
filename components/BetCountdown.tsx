@@ -12,9 +12,10 @@ interface BetCountdownProps {
   bet: BetCountdownItem;
   onZero?: () => void;
   mode?: 'full' | 'icon-only' | 'status-only';
+  color?: string;
 }
 
-export default function BetCountdown({ bet, onZero, mode = 'full' }: BetCountdownProps) {
+export default function BetCountdown({ bet, onZero, mode = 'full', color }: BetCountdownProps) {
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,8 +32,8 @@ export default function BetCountdown({ bet, onZero, mode = 'full' }: BetCountdow
 
       if (diff <= 0) {
         setTimeLeft('00:00');
-        clearInterval(interval);
         if (onZero) onZero();
+        return; // Logic changed: don't clear interval if we want it to stay at 00:00, or just stop here.
       } else {
         const hours = Math.floor(diff / (1000 * 60 * 60));
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -51,16 +52,16 @@ export default function BetCountdown({ bet, onZero, mode = 'full' }: BetCountdow
   if (!timeLeft) return null;
 
   if (mode === 'status-only') {
-    return <Text style={styles.statusOnlyText}>{timeLeft}</Text>;
+    return <Text style={[styles.statusOnlyText, color ? { color } : null]}>{timeLeft}</Text>;
   }
 
   if (mode === 'icon-only') {
-    return <Text style={styles.iconText}>{timeLeft}</Text>;
+    return <Text style={[styles.iconText, color ? { color } : null]}>{timeLeft}</Text>;
   }
 
   return (
     <View style={styles.countdownBadge}>
-      <Text style={styles.countdownText}>LOCKS IN: {timeLeft}</Text>
+      <Text style={[styles.countdownText, color ? { color } : null]}>LOCKS IN: {timeLeft}</Text>
     </View>
   );
 }
