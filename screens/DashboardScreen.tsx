@@ -1,8 +1,9 @@
-import React, { useEffect, useLayoutEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useRef } from 'react';
 import {
   StyleSheet, Text, View, FlatList, TouchableOpacity,
   ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../supabase';
@@ -66,7 +67,7 @@ export default function DashboardScreen({ route, navigation }: any) {
   const [blindBidPercent, setBlindBidPercent] = useState('50');
 
   const [pendingApprovals, setPendingApprovals] = useState(0);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const isInitialLoad = useRef(true);
 
   const handleTogglePitchBetType = (type: any) => {
     setPitchBetType(type);
@@ -207,12 +208,16 @@ export default function DashboardScreen({ route, navigation }: any) {
   }
 
   async function loadBoard(overrideEventId?: string | null) {
+    // Atomic check using Ref to avoid stale closures in Realtime/Focus callbacks
+    if (isInitialLoad.current) {
+      setLoading(true);
+      isInitialLoad.current = false;
+    }
+
     try {
       const storedUserId = await AsyncStorage.getItem('userId');
       const storedCampaignId = await AsyncStorage.getItem('campaignId');
       if (!storedUserId || !storedCampaignId) throw new Error("Missing user data.");
-
-      if (isInitialLoad) setLoading(true);
 
       await Promise.all([
         supabase.rpc('open_expired_auto_events'),
@@ -303,7 +308,6 @@ export default function DashboardScreen({ route, navigation }: any) {
 
     } catch (error: any) { console.error(error.message); } finally { 
       setLoading(false); 
-      setIsInitialLoad(false);
     }
   }
 
@@ -392,7 +396,6 @@ export default function DashboardScreen({ route, navigation }: any) {
       }
       setSuggestModalVisible(false); 
       resetPitchState();
-      loadBoard();
     } finally { setIsSubmitting(false); }
   }
 
