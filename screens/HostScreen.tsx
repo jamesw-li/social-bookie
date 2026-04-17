@@ -373,7 +373,8 @@ export default function HostScreen({ navigation }: any) {
         created_at: p.created_at,
         sourceTable: 'guest_proposals',
         raw: p,
-        event_id: p.event_id
+        event_id: p.event_id,
+        status: p.status
       });
     });
 
@@ -388,7 +389,8 @@ export default function HostScreen({ navigation }: any) {
         options: b.bet_options,
         sourceTable: 'bets',
         raw: b,
-        event_id: b.event_id
+        event_id: b.event_id,
+        status: b.status
       });
     });
 
@@ -402,7 +404,8 @@ export default function HostScreen({ navigation }: any) {
         created_at: p.created_at,
         sourceTable: 'p2p_prop_bets',
         raw: p,
-        event_id: p.event_id
+        event_id: p.event_id,
+        status: p.status
       });
     });
 
@@ -416,7 +419,8 @@ export default function HostScreen({ navigation }: any) {
         created_at: b.created_at,
         sourceTable: 'blind_matchups',
         raw: b,
-        event_id: b.event_id
+        event_id: b.event_id,
+        status: b.status
       });
     });
 
@@ -944,6 +948,7 @@ export default function HostScreen({ navigation }: any) {
       } finally { setIsCreating(false); }
     };
 
+    // 🚨 POPUP REMOVED/BYPASSED FOR PITCHES 🚨
     if (editingPitch && editingPitch.sourceTable === 'bets' && editingPitch.status !== 'pending') {
       const title = 'Edit & Refund?';
       const msg = 'This bet is already live. Changing it will REFUND all current players since the terms are changing. Proceed?';
@@ -1371,7 +1376,7 @@ export default function HostScreen({ navigation }: any) {
       const isMenuOpen = editingPitch?.id === pitch.id;
       
       return (
-        <View key={`${pitch.sourceTable}-${pitch.id}`} style={styles.pitchCard}>
+        <View key={`${pitch.sourceTable}-${pitch.id}`} style={[styles.pitchCard, isMenuOpen && { zIndex: 1000, elevation: 10 }]}>
           <TouchableOpacity 
             style={styles.pitchDetails} 
             onPress={() => handleEditUnifiedPitch(pitch)}
@@ -1682,7 +1687,7 @@ export default function HostScreen({ navigation }: any) {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitleSpec}>{editingPitch ? 'Edit Bet' : 'Push Live Bet'}</Text>
+              <Text style={styles.specTitle}>{editingPitch ? 'Edit Bet' : 'Push Live Bet'}</Text>
               <TouchableOpacity onPress={() => { setCreateModalVisible(false); setEditingPitch(null); }}>
                 <Text style={styles.specCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -1918,7 +1923,7 @@ export default function HostScreen({ navigation }: any) {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitleSpec}>Adjust Wallet</Text>
+              <Text style={styles.specTitle}>Adjust Wallet</Text>
               <TouchableOpacity onPress={() => setAdjustmentModalVisible(false)}>
                 <Text style={styles.specCancelText}>Cancel</Text>
               </TouchableOpacity>
@@ -2427,7 +2432,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  modalTitleSpec: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  pickerTriggerText: {
+    color: '#fff',
+    fontSize: 16,
+  },
+  specTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
   specCancelText: { color: '#ff4444', fontWeight: 'bold', fontSize: 16 },
   specSectionLabel: { color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 },
   specInput: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: '#333', fontSize: 14 },

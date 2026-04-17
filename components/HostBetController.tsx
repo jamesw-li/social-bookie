@@ -84,7 +84,7 @@ export default function HostBetController({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, menuVisible && { zIndex: 1000, elevation: 10 }]}>
       {/* Left: Details (Tap to Edit) */}
       <TouchableOpacity 
         style={styles.detailsArea}
