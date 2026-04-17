@@ -18,28 +18,47 @@ interface LedgerTabProps {
   campaignId: string | null;
   displayName?: string; // When host views another player
   hideHeader?: boolean;
+  initialEntries?: LedgerEntry[]; // NEW: For instant loading from parent
 }
 
-export default function LedgerTab({ userId, campaignId, displayName, hideHeader }: LedgerTabProps) {
-  const [entries, setEntries] = useState<LedgerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function LedgerTab({ userId, campaignId, displayName, hideHeader, initialEntries }: LedgerTabProps) {
+  const [entries, setEntries] = useState<LedgerEntry[]>(initialEntries || []);
+  const [loading, setLoading] = useState(!initialEntries);
+  const [isInitialLoad, setIsInitialLoad] = useState(!initialEntries);
+
+  useEffect(() => {
+    if (initialEntries) {
+      setEntries(initialEntries);
+      setLoading(false);
+      setIsInitialLoad(false);
+    }
+  }, [initialEntries]);
 
   useEffect(() => {
     if (!userId || !campaignId) return;
-    fetchLedger();
-  }, [userId, campaignId]);
+    // Only auto-fetch if we don't have initial entries or if it's a specific user view
+    if (!initialEntries || displayName) {
+      fetchLedger();
+    }
+  }, [userId, campaignId, displayName]);
 
   async function fetchLedger() {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('ledger_entries')
-      .select('id, transaction_type, amount, memo, running_balance, created_at')
-      .eq('user_id', userId)
-      .eq('campaign_id', campaignId)
-      .order('created_at', { ascending: false });
+    if (isInitialLoad) setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('ledger_entries')
+        .select('id, transaction_type, amount, memo, running_balance, created_at')
+        .eq('user_id', userId)
+        .eq('campaign_id', campaignId)
+        .order('created_at', { ascending: false });
 
-    if (!error && data) setEntries(data);
-    setLoading(false);
+      if (!error && data) {
+        setEntries(data);
+      }
+    } finally {
+      setLoading(false);
+      setIsInitialLoad(false);
+    }
   }
 
   const getTypeConfig = (type: LedgerEntry['transaction_type'], amount: number) => {
@@ -100,7 +119,7 @@ export default function LedgerTab({ userId, campaignId, displayName, hideHeader 
       {!hideHeader && (
         <View style={styles.header}>
           <Text style={styles.title}>
-            {displayName ? `${displayName}'s Ledger` : '📒 My Ledger'}
+            {displayName ? `${displayName}'s Ledger` : 'My Ledger'}
           </Text>
           <TouchableOpacity onPress={fetchLedger} style={styles.refreshBtn}>
             <Text style={styles.refreshText}>↻ Refresh</Text>

@@ -34,6 +34,7 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   const [myWagers, setMyWagers] = useState<any[]>([]);
   const [myBets, setMyBets] = useState<any[]>([]);
+  const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
   const [standings, setStandings] = useState<any[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -151,7 +152,8 @@ export default function DashboardScreen({ route, navigation }: any) {
           {userRole === 'host' && (
             <View style={{ position: 'relative' }}>
               <TouchableOpacity style={styles.navPillHost} onPress={() => navigation.navigate('Host')}>
-                <Text style={styles.navPillHostText}>👑 Host</Text>
+                <MaterialCommunityIcons name="shield-crown-outline" size={14} color="#FFD700" />
+                <Text style={[styles.navPillHostText, { marginLeft: 4 }]}>Host</Text>
               </TouchableOpacity>
               {pendingApprovals > 0 && (
                 <View style={styles.badgeContainer}>
@@ -161,7 +163,8 @@ export default function DashboardScreen({ route, navigation }: any) {
             </View>
           )}
           <TouchableOpacity onPress={() => setActiveTab('ledger')} style={styles.walletBadge}>
-            <Text style={styles.walletText}>💰 {walletBalance.toLocaleString()}</Text>
+            <MaterialCommunityIcons name="wallet-outline" size={14} color="#00D084" />
+            <Text style={[styles.walletText, { marginLeft: 4 }]}>{walletBalance.toLocaleString()}</Text>
           </TouchableOpacity>
         </View>
       ),
@@ -280,12 +283,13 @@ export default function DashboardScreen({ route, navigation }: any) {
       };
 
       // Perform all fetches in parallel
-      const [betsRes, p2pRes, blindRes, wagersRes, standingsRes] = await Promise.all([
+      const [betsRes, p2pRes, blindRes, wagersRes, standingsRes, ledgerRes] = await Promise.all([
         supabase.from('bets').select(`id, question, status, wager_count, trigger_type, lock_at, created_at, bet_options!bet_options_bet_id_fkey ( id, label, multiplier )`).eq('campaign_id', storedCampaignId).in('status', ['open', 'locked']).or(orFilter),
         supabase.from('p2p_prop_bets').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'locked', 'resolved']).or(orFilter),
         supabase.from('blind_matchups').select('*, trigger_type, lock_at').eq('campaign_id', storedCampaignId).in('status', ['open', 'matched', 'resolved']).or(orFilter),
         supabase.from('wagers').select(`id, bet_id, points_risked, status, created_at, bet_options!wagers_option_id_fkey ( label, multiplier ), bets ( question, event_id ) `).eq('user_id', storedUserId),
-        supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false })
+        supabase.from('campaign_participants').select('user_id, global_point_balance, users(display_name)').eq('campaign_id', storedCampaignId).order('global_point_balance', { ascending: false }),
+        supabase.from('ledger_entries').select('id, transaction_type, amount, memo, running_balance, created_at').eq('user_id', storedUserId).eq('campaign_id', storedCampaignId).order('created_at', { ascending: false })
       ]);
 
       // Batch all data updates into one turn
@@ -303,6 +307,7 @@ export default function DashboardScreen({ route, navigation }: any) {
         setMyBets(activeWagers.reverse());
       }
       if (standingsRes.data) setStandings(standingsRes.data);
+      if (ledgerRes.data) setLedgerEntries(ledgerRes.data);
 
     } catch (error: any) { console.error(error.message); } finally { 
       setLoading(false); 
@@ -581,9 +586,9 @@ export default function DashboardScreen({ route, navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', padding: 20 },
   headerContainer: { marginBottom: 15 },
-  navPillHost: { backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
+  navPillHost: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 215, 0, 0.1)', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#FFD700' },
   navPillHostText: { color: '#FFD700', fontWeight: 'bold', fontSize: 12 },
-  walletBadge: { backgroundColor: 'rgba(0, 208, 132, 0.1)', borderWidth: 1, borderColor: '#00D084', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  walletBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0, 208, 132, 0.1)', borderWidth: 1, borderColor: '#00D084', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
   walletText: { color: '#00D084', fontWeight: 'bold', fontSize: 13 },
   badgeContainer: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ff4444', borderRadius: 12, minWidth: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#121212' },
   badgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
