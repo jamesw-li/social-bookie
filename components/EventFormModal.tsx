@@ -9,7 +9,8 @@ import {
   Alert,
   KeyboardAvoidingView,
   ScrollView,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../supabase';
@@ -21,13 +22,13 @@ const webInputStyle: any = Platform.OS === 'web' ? {
   backgroundColor: '#121212',
   color: '#fff',
   borderRadius: '8px',
-  padding: '14px',
+  padding: '12px 14px',
   border: '1px solid #333',
-  fontSize: '16px',
+  fontSize: '14px',
   width: '100%',
   outline: 'none',
   fontFamily: FONT_STACK,
-  boxSizing: 'border-box' // 🚨 Prevents padding from causing overflow/cutoff
+  boxSizing: 'border-box'
 } : {};
 
 interface EventFormModalProps {
@@ -43,7 +44,6 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState<'manual' | 'auto'>('manual');
 
-  // Explicit strings for Expo Web compat
   const [dateInput, setDateInput] = useState('');
   const [timeInput, setTimeInput] = useState('');
 
@@ -65,7 +65,6 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
             const d = new Date(existingEvent.start_time);
             setDateObj(d);
             
-            // Sync strings for web/manual fallback
             const yyyy = d.getFullYear();
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const dd = String(d.getDate()).padStart(2, '0');
@@ -136,7 +135,6 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
     let parsedIsoString = null;
 
     if (dateInput.trim() || timeInput.trim() || triggerType === 'auto') {
-      // Use the dateObj directly to avoid timezone string parsing issues
       if (!isNaN(dateObj.getTime())) {
         parsedIsoString = dateObj.toISOString();
       } else {
@@ -192,69 +190,73 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
       visible={visible}
       animationType="slide"
       transparent={true}
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
-      {/* Holy Grail Layout applied to Modal */}
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
-        >
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end' }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.header}>
-                <Text style={styles.title}>{existingEvent ? 'Edit Event' : 'Create Event'}</Text>
-                <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
-                  <Text style={styles.closeText}>Cancel</Text>
-                </TouchableOpacity>
-              </View>
+      <KeyboardAvoidingView 
+        style={styles.modalOverlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{existingEvent ? 'Edit Event' : 'Create Event'}</Text>
+            <TouchableOpacity onPress={onClose} disabled={isSubmitting}>
+              <Text style={styles.specCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
 
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={{ maxHeight: 400 }}
+          >
+            <Text style={styles.specSectionLabel}>General Information</Text>
+            
+            <View style={{ marginBottom: 15 }}>
               <Text style={styles.label}>Event Name</Text>
               <TextInput
-                style={styles.input}
+                style={styles.specInput}
                 placeholder="e.g. Saturday Main Event"
                 placeholderTextColor="#666"
                 value={name}
                 onChangeText={setName}
               />
+            </View>
 
+            <View style={{ marginBottom: 15 }}>
               <Text style={styles.label}>Description (Optional)</Text>
               <TextInput
-                style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                style={[styles.specInput, { minHeight: 80, textAlignVertical: 'top' }]}
                 placeholder="Brief description of the action..."
                 placeholderTextColor="#666"
                 multiline
                 value={description}
                 onChangeText={setDescription}
               />
+            </View>
 
+            <View style={{ marginBottom: 15 }}>
+              <Text style={styles.specSectionLabel}>Scheduling & Automation</Text>
+              
               <Text style={styles.label}>Trigger Type</Text>
-              <View style={styles.segmentContainer}>
+              <View style={styles.specTypeSelectorRow}>
                 <TouchableOpacity
-                  style={[styles.segmentBtn, triggerType === 'manual' && styles.segmentBtnActive]}
+                  style={[styles.specTypeBtn, triggerType === 'manual' && styles.specTypeBtnActive]}
                   onPress={() => setTriggerType('manual')}
                 >
-                  <Text style={[styles.segmentText, triggerType === 'manual' && styles.segmentTextActive]}>Manual</Text>
+                  <Text style={[styles.specTypeBtnText, triggerType === 'manual' && styles.specTypeBtnTextActive]}>Manual</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.segmentBtn, triggerType === 'auto' && styles.segmentBtnActive]}
+                  style={[styles.specTypeBtn, triggerType === 'auto' && styles.specTypeBtnActive]}
                   onPress={() => setTriggerType('auto')}
                 >
-                  <Text style={[styles.segmentText, triggerType === 'auto' && styles.segmentTextActive]}>Auto-Timer</Text>
+                  <Text style={[styles.specTypeBtnText, triggerType === 'auto' && styles.specTypeBtnTextActive]}>Auto-Timer</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Start Time {triggerType === 'manual' && '(Optional)'}</Text>
-              <View style={styles.timeRow}>
-                {/* DATE PICKER */}
-                <View style={[styles.timeFieldContainer, { marginRight: Platform.OS === 'web' ? 0 : 10 }]}>
-                  <Text style={styles.subLabel}>Date</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Start Date</Text>
                   {Platform.OS === 'web' ? (
                     <input
                       type="date"
@@ -272,15 +274,14 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                       style={webInputStyle}
                     />
                   ) : (
-                    <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowDatePicker(true)}>
-                      <Text style={styles.pickerTriggerText}>{dateInput || 'YYYY-MM-DD'}</Text>
+                    <TouchableOpacity style={styles.specInput} onPress={() => setShowDatePicker(true)}>
+                      <Text style={{ color: '#fff', fontSize: 14 }}>{dateInput || 'YYYY-MM-DD'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
-                {/* TIME PICKER */}
-                <View style={styles.timeFieldContainer}>
-                  <Text style={styles.subLabel}>Time (24-hr)</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.label}>Start Time (24-hr)</Text>
                   {Platform.OS === 'web' ? (
                     <input
                       type="time"
@@ -298,24 +299,20 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                       style={webInputStyle}
                     />
                   ) : (
-                    <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowTimePicker(true)}>
-                      <Text style={styles.pickerTriggerText}>{timeInput || 'HH:MM'}</Text>
+                    <TouchableOpacity style={styles.specInput} onPress={() => setShowTimePicker(true)}>
+                      <Text style={{ color: '#fff', fontSize: 14 }}>{timeInput || 'HH:MM'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
               </View>
 
-              {/* NATIVE PICKERS (Mobile only) */}
               {showDatePicker && Platform.OS !== 'web' && (
                 <DateTimePicker
                   value={dateObj}
                   mode="date"
                   display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   themeVariant="dark"
-                  onChange={(event, selectedDate) => {
-                    setShowDatePicker(false);
-                    if (selectedDate) onDateChange(event, selectedDate);
-                  }}
+                  onChange={onDateChange}
                 />
               )}
               {showTimePicker && Platform.OS !== 'web' && (
@@ -325,140 +322,116 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                   is24Hour={true}
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   themeVariant="dark"
-                  onChange={(event, selectedTime) => {
-                    setShowTimePicker(false);
-                    if (selectedTime) onTimeChange(event, selectedTime);
-                  }}
+                  onChange={onTimeChange}
                 />
               )}
-
-              <TouchableOpacity
-                style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]}
-                onPress={handleSave}
-                disabled={isSubmitting}
-              >
-                <Text style={styles.saveButtonText}>{isSubmitting ? 'Saving...' : 'Save Settings'}</Text>
-              </TouchableOpacity>
-
-              {/* Bottom Padding for SafeArea */}
-              {Platform.OS === 'ios' && <View style={{ height: 40 }} />}
             </View>
           </ScrollView>
-        </KeyboardAvoidingView>
-      </View>
+
+          <TouchableOpacity
+            style={[styles.specSubmitBtn, isSubmitting && { opacity: 0.7 }]}
+            onPress={handleSave}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? <ActivityIndicator color="#000" /> : (
+              <Text style={styles.specSubmitBtnText}>SAVE SETTINGS</Text>
+            )}
+          </TouchableOpacity>
+
+          {Platform.OS === 'ios' && <View style={{ height: 40 }} />}
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
   modalContent: {
     backgroundColor: '#1e1e1e',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 24,
-    paddingBottom: 30,
+    padding: 25,
   },
-  header: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  title: {
+  modalTitle: {
     color: '#fff',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
   },
-  closeText: {
+  specCancelText: {
     color: '#ff4444',
     fontSize: 16,
     fontWeight: 'bold',
   },
-  label: {
+  specSectionLabel: {
     color: '#e0e0e0',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  label: {
+    color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
     marginBottom: 8,
-    marginTop: 10,
   },
-  subLabel: {
-    color: '#a0a0a0',
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  input: {
+  specInput: {
     backgroundColor: '#121212',
     color: '#fff',
     borderRadius: 8,
-    padding: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#333',
-    fontSize: 16,
+    fontSize: 14,
   },
-  segmentContainer: {
+  specTypeSelectorRow: {
     flexDirection: 'row',
     backgroundColor: '#121212',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
     padding: 4,
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  segmentBtn: {
+  specTypeBtn: {
     flex: 1,
     paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 6,
   },
-  segmentBtnActive: {
+  specTypeBtnActive: {
     backgroundColor: '#00D084',
   },
-  segmentText: {
+  specTypeBtnText: {
     color: '#a0a0a0',
     fontWeight: 'bold',
+    fontSize: 12,
   },
-  segmentTextActive: {
+  specTypeBtnTextActive: {
     color: '#121212',
   },
-  timeRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -5,
-    marginBottom: 10,
-  },
-  timeFieldContainer: {
-    flex: 1,
-    minWidth: 160,
-    marginHorizontal: 5,
-    marginBottom: 10,
-  },
-  saveButton: {
+  specSubmitBtn: {
     backgroundColor: '#00D084',
-    paddingVertical: 16,
-    borderRadius: 8,
+    paddingVertical: 15,
+    borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
-    shadowColor: '#00D084',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  saveButtonText: {
-    color: '#121212',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  pickerTrigger: {
-    backgroundColor: '#121212',
-    borderRadius: 8,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#333',
     justifyContent: 'center',
-    position: 'relative', // 🚨 Required for the overlay input
+    marginTop: 15,
   },
-  pickerTriggerText: {
-    color: '#fff',
+  specSubmitBtnText: {
+    color: '#121212',
     fontSize: 16,
+    fontWeight: 'bold',
   },
 });

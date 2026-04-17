@@ -1682,11 +1682,14 @@ export default function HostScreen({ navigation }: any) {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Push Live Bet</Text>
-              <TouchableOpacity onPress={() => { setCreateModalVisible(false); setEditingPitch(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+              <Text style={styles.modalTitleSpec}>{editingPitch ? 'Edit Bet' : 'Push Live Bet'}</Text>
+              <TouchableOpacity onPress={() => { setCreateModalVisible(false); setEditingPitch(null); }}>
+                <Text style={styles.specCancelText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
+
             <View style={{ marginBottom: 15 }}>
-              <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
+              <Text style={styles.specSectionLabel}>Link to Action:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
                 {eventsList.map((e: any) => (
                   <TouchableOpacity
@@ -1699,52 +1702,56 @@ export default function HostScreen({ navigation }: any) {
                 ))}
               </ScrollView>
             </View>
-            <View style={styles.typeSelectorRow}>
-              <TouchableOpacity style={[styles.typeBtn, betType === 'prop' && styles.typeBtnActive]} onPress={() => handleToggleBetType('prop')}>
-                <Text style={[styles.typeBtnText, betType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
+
+            <View style={styles.specTypeSelectorRow}>
+              <TouchableOpacity style={[styles.specTypeBtn, betType === 'prop' && styles.specTypeBtnActive]} onPress={() => handleToggleBetType('prop')}>
+                <Text style={[styles.specTypeBtnText, betType === 'prop' && styles.specTypeBtnTextActive]}>Props</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, betType === 'over_under' && styles.typeBtnActive]} onPress={() => handleToggleBetType('over_under')}>
-                <Text style={[styles.typeBtnText, betType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
+              <TouchableOpacity style={[styles.specTypeBtn, betType === 'over_under' && styles.specTypeBtnActive]} onPress={() => handleToggleBetType('over_under')}>
+                <Text style={[styles.specTypeBtnText, betType === 'over_under' && styles.specTypeBtnTextActive]}>O/U</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, betType === 'p2p' && styles.typeBtnActive]} onPress={() => handleToggleBetType('p2p')}>
-                <Text style={[styles.typeBtnText, betType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
+              <TouchableOpacity style={[styles.specTypeBtn, betType === 'p2p' && styles.specTypeBtnActive]} onPress={() => handleToggleBetType('p2p')}>
+                <Text style={[styles.specTypeBtnText, betType === 'p2p' && styles.specTypeBtnTextActive]}>P2P</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.typeBtn, betType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleToggleBetType('blind')}>
-                <Text style={[styles.typeBtnText, betType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
+              <TouchableOpacity style={[styles.specTypeBtn, betType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleToggleBetType('blind')}>
+                <Text style={[styles.specTypeBtnText, betType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
-              <View style={{ marginBottom: 20 }}>
-                <Text style={styles.label}>Locking Policy</Text>
-                <View style={styles.segmentContainer}>
+
+            <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={{ marginBottom: 15 }}>
+                <Text style={styles.specSectionLabel}>Locking Policy</Text>
+                <View style={styles.specTypeSelectorRow}>
                   <TouchableOpacity
-                    style={[styles.segmentBtn, betTriggerType === 'manual' && styles.segmentBtnActive]}
+                    style={[styles.specTypeBtn, betTriggerType === 'manual' && styles.specTypeBtnActive]}
                     onPress={() => setBetTriggerType('manual')}
                   >
-                    <Text style={[styles.segmentText, betTriggerType === 'manual' && styles.segmentTextActive]}>Manual</Text>
+                    <Text style={[styles.specTypeBtnText, betTriggerType === 'manual' && styles.specTypeBtnTextActive]}>Manual</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.segmentBtn, betTriggerType === 'auto' && styles.segmentBtnActive]}
+                    style={[styles.specTypeBtn, betTriggerType === 'auto' && styles.specTypeBtnActive]}
                     onPress={() => setBetTriggerType('auto')}
                   >
-                    <Text style={[styles.segmentText, betTriggerType === 'auto' && styles.segmentTextActive]}>Auto-Timer</Text>
+                    <Text style={[styles.specTypeBtnText, betTriggerType === 'auto' && styles.specTypeBtnTextActive]}>Auto-Timer</Text>
                   </TouchableOpacity>
                 </View>
 
                 {betTriggerType === 'auto' && (
-                  <View style={{ marginTop: 10 }}>
-                    <Text style={styles.subLabel}>Add Timer (minutes from now)</Text>
-                    <TextInput
-                      style={[styles.input, { marginBottom: 15 }]}
-                      placeholder="e.g. 10"
-                      placeholderTextColor="#666"
-                      keyboardType="numeric"
-                      value={betDurationInput}
-                      onChangeText={handleDurationChange}
-                    />
+                  <View style={{ marginTop: 12 }}>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={[styles.subLabel, { color: '#aaa', marginBottom: 6 }]}>Quick Add (minutes from now)</Text>
+                      <TextInput
+                        style={styles.specInput}
+                        placeholder="e.g. 10"
+                        placeholderTextColor="#666"
+                        keyboardType="numeric"
+                        value={betDurationInput}
+                        onChangeText={handleDurationChange}
+                      />
+                    </View>
 
-                    <View style={styles.timeRow}>
-                      <View style={styles.timeFieldContainer}>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ flex: 1 }}>
                         <Text style={styles.subLabel}>Date</Text>
                         {Platform.OS === 'web' ? (
                           <input
@@ -1764,13 +1771,13 @@ export default function HostScreen({ navigation }: any) {
                             style={webInputStyle}
                           />
                         ) : (
-                          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetDatePicker(true)}>
-                            <Text style={styles.pickerTriggerText}>{betDateInput || 'YYYY-MM-DD'}</Text>
+                          <TouchableOpacity style={styles.specInput} onPress={() => setShowBetDatePicker(true)}>
+                            <Text style={{ color: '#fff', fontSize: 14 }}>{betDateInput || 'YYYY-MM-DD'}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
 
-                      <View style={styles.timeFieldContainer}>
+                      <View style={{ flex: 1 }}>
                         <Text style={styles.subLabel}>Time (24-hr)</Text>
                         {Platform.OS === 'web' ? (
                           <input
@@ -1790,8 +1797,8 @@ export default function HostScreen({ navigation }: any) {
                             style={webInputStyle}
                           />
                         ) : (
-                          <TouchableOpacity style={styles.pickerTrigger} onPress={() => setShowBetTimePicker(true)}>
-                            <Text style={styles.pickerTriggerText}>{betTimeInput || 'HH:MM'}</Text>
+                          <TouchableOpacity style={styles.specInput} onPress={() => setShowBetTimePicker(true)}>
+                            <Text style={{ color: '#fff', fontSize: 14 }}>{betTimeInput || 'HH:MM'}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -1822,41 +1829,41 @@ export default function HostScreen({ navigation }: any) {
 
               {betType === 'blind' ? (
                 <>
-                  <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
-                  <TextInput style={styles.input} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.label}>Side A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
-                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.label}>Side B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                  <Text style={[styles.specSectionLabel, { color: '#BB86FC' }]}>The Scenario</Text>
+                  <TextInput style={styles.specInput} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8, marginBottom: 5 }}>
+                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.specSectionLabel}>Side A</Text><TextInput style={styles.specInput} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1, minWidth: 120 }}><Text style={styles.specSectionLabel}>Side B</Text><TextInput style={styles.specInput} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
                   </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text><TextInput style={styles.input} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" /></View>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={updateMultiplier}/></View>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={blindPercent} onChangeText={updatePercent}/></View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>Base Unit</Text><TextInput style={styles.specInput} keyboardType="numeric" value={blindBase} onChangeText={setBlindBase} placeholder="100" /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>Odds (x)</Text><TextInput style={styles.specInput} keyboardType="decimal-pad" value={blindMultiplier} onChangeText={updateMultiplier}/></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>Win (%)</Text><TextInput style={styles.specInput} keyboardType="number-pad" value={blindPercent} onChangeText={updatePercent}/></View>
                   </View>
                 </>
               ) : betType === 'p2p' ? (
                 <>
-                  <Text style={styles.label}>The Scenario</Text>
-                  <TextInput style={styles.input} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Option A</Text><TextInput style={styles.input} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
-                    <View style={{ flex: 1 }}><Text style={styles.label}>Option B</Text><TextInput style={styles.input} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="No" placeholderTextColor="#666" /></View>
+                  <Text style={[styles.specSectionLabel, { color: '#fff' }]}>The Scenario</Text>
+                  <TextInput style={styles.specInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 8, marginBottom: 5 }}>
+                    <View style={{ flex: 1 }}><Text style={styles.specSectionLabel}>Option A</Text><TextInput style={styles.specInput} value={p2pOptionA} onChangeText={setP2pOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                    <View style={{ flex: 1 }}><Text style={styles.specSectionLabel}>Option B</Text><TextInput style={styles.specInput} value={p2pOptionB} onChangeText={setP2pOptionB} placeholder="No" placeholderTextColor="#666" /></View>
                   </View>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Risk</Text><TextInput style={styles.input} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} /></View>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Odds (x)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} /></View>
-                    <View style={{ flex: 1, minWidth: 80 }}><Text style={styles.label}>Win (%)</Text><TextInput style={styles.input} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} /></View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 15 }}>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={[styles.specSectionLabel, { color: '#aaa' }]}>Risk</Text><TextInput style={styles.specInput} keyboardType="numeric" value={p2pWager} onChangeText={(text) => setP2pWager(sanitizeNumber(text))} /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={[styles.specSectionLabel, { color: '#aaa' }]}>Odds (x)</Text><TextInput style={styles.specInput} keyboardType="decimal-pad" value={p2pMultiplier} onChangeText={updateP2PMultiplier} /></View>
+                    <View style={{ flex: 1, minWidth: 80 }}><Text style={[styles.specSectionLabel, { color: '#aaa' }]}>Win (%)</Text><TextInput style={styles.specInput} keyboardType="number-pad" value={p2pPercent} onChangeText={updateP2PPercent} /></View>
                   </View>
                 </>
               ) : (
                 <>
-                  <Text style={styles.label}>The Question</Text>
-                  <TextInput style={styles.input} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
-                  <Text style={styles.label}>Options & Payouts</Text>
+                  <Text style={[styles.specSectionLabel, { color: '#fff' }]}>The Question</Text>
+                  <TextInput style={styles.specInput} placeholder={betType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={newQuestion} onChangeText={setNewQuestion} />
+                  <Text style={{ color: '#00D084', fontSize: 13, fontWeight: 'bold', marginBottom: 10, marginTop: 10 }}>Options & Payouts</Text>
                   {newOptions.map((opt) => (
-                    <View key={opt.id} style={styles.optionRow}>
+                    <View key={opt.id} style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                       <TextInput 
-                        style={[styles.input, { flex: 3, minWidth: 150, marginRight: 8, marginBottom: 10 }]} 
+                        style={[styles.specInput, { flex: 3 }]} 
                         value={opt.label} 
                         onChangeText={(text) => updateOption(opt.id, 'label', text)} 
                         editable={betType !== 'over_under'} 
@@ -1864,7 +1871,7 @@ export default function HostScreen({ navigation }: any) {
                         placeholderTextColor="#666"
                       />
                       <TextInput 
-                        style={[styles.input, { flex: 1, minWidth: 80, marginBottom: 10, textAlign: 'center' }]} 
+                        style={[styles.specInput, { flex: 1, textAlign: 'center' }]} 
                         keyboardType="decimal-pad" 
                         value={opt.odds} 
                         onChangeText={(text) => updateOption(opt.id, 'odds', sanitizeNumber(text))} 
@@ -1873,13 +1880,13 @@ export default function HostScreen({ navigation }: any) {
                       />
                     </View>
                   ))}
-                  {betType === 'prop' && <TouchableOpacity style={styles.addOptionBtn} onPress={handleAddOption}><Text style={styles.addOptionText}>+ Add Another Option</Text></TouchableOpacity>}
+                  {betType === 'prop' && <TouchableOpacity style={{ alignItems: 'center', paddingVertical: 10, marginBottom: 10 }} onPress={handleAddOption}><Text style={{ color: '#00D084', fontWeight: 'bold', fontSize: 13 }}>+ Add Another Option</Text></TouchableOpacity>}
                 </>
               )}
             </ScrollView>
-            <TouchableOpacity style={styles.submitBtn} onPress={handlePublishBet} disabled={isCreating}>
-              <Text style={styles.submitBtnText}>
-                {isCreating ? (editingPitch ? 'Saving...' : 'Creating...') : (editingPitch ? 'Save Bet' : 'Create Bet')}
+            <TouchableOpacity style={styles.specSubmitBtn} onPress={handlePublishBet} disabled={isCreating}>
+              <Text style={styles.specSubmitBtnText}>
+                {isCreating ? 'PUBLISHING...' : (editingPitch ? 'SAVE CHANGES' : 'PUSH LIVE BET')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1909,33 +1916,38 @@ export default function HostScreen({ navigation }: any) {
 
       <Modal visible={adjustmentModalVisible} transparent={true} animationType="slide" statusBarTranslucent={true}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: '#1e1e1e' }]}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Adjust Wallet</Text>
-              <TouchableOpacity onPress={() => setAdjustmentModalVisible(false)}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+              <Text style={styles.modalTitleSpec}>Adjust Wallet</Text>
+              <TouchableOpacity onPress={() => setAdjustmentModalVisible(false)}>
+                <Text style={styles.specCancelText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
             
-            <Text style={{ color: '#aaa', marginBottom: 20 }}>Adjusting balance for <Text style={{ color: '#fff', fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text></Text>
+            <View style={{ marginBottom: 12 }}>
+               <Text style={styles.specSectionLabel}>Adjusting balance for:</Text>
+               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedParticipant?.users?.display_name}</Text>
+            </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25 }}>
+            <View style={[styles.specTypeSelectorRow, { marginBottom: 12 }]}>
               <TouchableOpacity 
-                style={[styles.typeBtn, !isDeletingPoints && { backgroundColor: '#00D084', borderColor: '#00D084' }]} 
+                style={[styles.specTypeBtn, !isDeletingPoints && { backgroundColor: '#00D084' }]} 
                 onPress={() => setIsDeletingPoints(false)}
               >
-                <Text style={[styles.typeBtnText, !isDeletingPoints && { color: '#000', fontWeight: 'bold' }]}>Add Points</Text>
+                <Text style={[styles.specTypeBtnText, !isDeletingPoints && { color: '#000', fontWeight: 'bold' }]}>Add Points</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.typeBtn, isDeletingPoints && { backgroundColor: '#ff4444', borderColor: '#ff4444' }]} 
+                style={[styles.specTypeBtn, isDeletingPoints && { backgroundColor: '#ff4444' }]} 
                 onPress={() => setIsDeletingPoints(true)}
               >
-                <Text style={[styles.typeBtnText, isDeletingPoints && { color: '#fff', fontWeight: 'bold' }]}>Delete Points</Text>
+                <Text style={[styles.specTypeBtnText, isDeletingPoints && { color: '#fff', fontWeight: 'bold' }]}>Delete Points</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Amount</Text>
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.specSectionLabel}>Amount</Text>
               <TextInput 
-                style={styles.input} 
+                style={styles.specInput} 
                 placeholder="0" 
                 placeholderTextColor="#666" 
                 keyboardType="numeric" 
@@ -1944,11 +1956,11 @@ export default function HostScreen({ navigation }: any) {
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Reason / Description (Required)</Text>
+            <View style={{ marginBottom: 5 }}>
+              <Text style={styles.specSectionLabel}>Reason / Description (Required)</Text>
               <TextInput 
-                style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
-                placeholder="e.g. Side betting payout, Buy-in adjustment, etc." 
+                style={[styles.specInput, { minHeight: 60, textAlignVertical: 'top' }]} 
+                placeholder="e.g. Side betting payout..." 
                 placeholderTextColor="#666" 
                 multiline 
                 value={adjustmentMemo} 
@@ -1957,11 +1969,11 @@ export default function HostScreen({ navigation }: any) {
             </View>
 
             <TouchableOpacity 
-              style={[styles.submitBtn, (!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment) && { opacity: 0.5 }]} 
+              style={[styles.specSubmitBtn, (!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment) && { opacity: 0.5 }]} 
               onPress={handleAdjustPoints}
               disabled={!adjustmentAmount || !adjustmentMemo.trim() || isProcessingAdjustment}
             >
-              <Text style={styles.submitBtnText}>{isProcessingAdjustment ? 'Processing...' : 'Confirm Adjustment'}</Text>
+              <Text style={styles.specSubmitBtnText}>{isProcessingAdjustment ? 'PROCESSING...' : 'CONFIRM ADJUSTMENT'}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -1972,7 +1984,9 @@ export default function HostScreen({ navigation }: any) {
           <View style={[styles.modalContent, { backgroundColor: '#1e1e1e' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update Bet Timer</Text>
-              <TouchableOpacity onPress={() => { setUpdateTimerModalVisible(false); setEditingPitch(null); }}><Text style={styles.closeText}>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setUpdateTimerModalVisible(false); setEditingPitch(null); }}>
+                <Text style={styles.closeText}>Cancel</Text>
+              </TouchableOpacity>
             </View>
 
             <View style={{ marginBottom: 20 }}>
@@ -2240,9 +2254,9 @@ const styles = StyleSheet.create({
   typeSelectorRow: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#121212', borderRadius: 8, padding: 4 },
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
   typeBtnActive: { backgroundColor: '#FFD700' },
-  scopePill: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center', borderRadius: 20, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#444', marginRight: 8 },
+  scopePill: { paddingVertical: 6, paddingHorizontal: 12, alignItems: 'center', borderRadius: 20, backgroundColor: '#2a2a2a', borderWidth: 1, borderColor: '#444', marginRight: 8 },
   scopePillActive: { backgroundColor: '#FFD700', borderColor: '#FFD700' },
-  scopePillText: { color: '#e0e0e0', fontWeight: '600', fontSize: 13 },
+  scopePillText: { color: '#e0e0e0', fontWeight: '600', fontSize: 12 },
   scopePillTextActive: { color: '#000' },
   typeBtnText: { color: '#a0a0a0', fontWeight: 'bold' },
   typeBtnTextActive: { color: '#000' },
@@ -2275,7 +2289,7 @@ const styles = StyleSheet.create({
   },
   addOptionBtn: { alignItems: 'center', paddingVertical: 10, marginBottom: 20 },
   addOptionText: { color: '#00D084', fontWeight: 'bold' },
-  submitBtn: { backgroundColor: '#FFD700', padding: 18, borderRadius: 10, alignItems: 'center', marginTop: 10 },
+  submitBtn: { backgroundColor: '#00D084', padding: 18, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   submitBtnText: { color: '#000', fontSize: 18, fontWeight: 'bold' },
   winnerButton: { backgroundColor: '#00D084', padding: 15, borderRadius: 8, marginBottom: 15, alignItems: 'center' },
   winnerButtonText: { color: '#000', fontWeight: 'bold', fontSize: 18 },
@@ -2413,8 +2427,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'relative',
   },
-  pickerTriggerText: {
-    color: '#fff',
-    fontSize: 16,
-  },
+  modalTitleSpec: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  specCancelText: { color: '#ff4444', fontWeight: 'bold', fontSize: 16 },
+  specSectionLabel: { color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 },
+  specInput: { backgroundColor: '#121212', color: '#fff', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: '#333', fontSize: 14 },
+  specTypeSelectorRow: { flexDirection: 'row', backgroundColor: '#121212', padding: 4, borderRadius: 8, marginBottom: 15 },
+  specTypeBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+  specTypeBtnActive: { backgroundColor: '#FFD700' },
+  specTypeBtnText: { color: '#a0a0a0', fontWeight: 'bold', fontSize: 12 },
+  specTypeBtnTextActive: { color: '#121212' },
+  specSubmitBtn: { backgroundColor: '#00D084', borderRadius: 10, paddingVertical: 15, alignItems: 'center', justifyContent: 'center', marginTop: 15 },
+  specSubmitBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
 });

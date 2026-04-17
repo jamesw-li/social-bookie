@@ -576,7 +576,109 @@ export default function DashboardScreen({ route, navigation }: any) {
         </Modal>
 
         <Modal visible={suggestModalVisible} transparent={true} animationType="slide">
-          <View style={styles.modalOverlay}><View style={styles.modalContent}><Text style={styles.modalTitle}>Pitch Bet</Text><TouchableOpacity onPress={() => setSuggestModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity></View></View>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Pitch Bet</Text>
+                <TouchableOpacity onPress={() => setSuggestModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity>
+              </View>
+
+              <View style={{ marginBottom: 15 }}>
+                <Text style={{ color: '#e0e0e0', fontSize: 13, fontWeight: 'bold', marginBottom: 8 }}>Link to Action:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+                  {eventsList.map((e: any) => (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={[styles.scopePill, pitchEventScope === e.id && styles.scopePillActive]}
+                      onPress={() => setPitchEventScope(e.id)}
+                    >
+                      <Text style={[styles.scopePillText, pitchEventScope === e.id && styles.scopePillTextActive]}>{e.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.typeSelectorRow}>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'prop' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('prop')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'prop' && styles.typeBtnTextActive]}>Props</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'over_under' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('over_under')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'over_under' && styles.typeBtnTextActive]}>O/U</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'p2p' && styles.typeBtnActive]} onPress={() => handleTogglePitchBetType('p2p')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'p2p' && styles.typeBtnTextActive]}>P2P</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pitchBetType === 'blind' && { backgroundColor: '#BB86FC' }]} onPress={() => handleTogglePitchBetType('blind')}>
+                  <Text style={[styles.typeBtnText, pitchBetType === 'blind' && { color: '#000', fontWeight: 'bold' }]}>Blind</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+                {pitchBetType === 'blind' ? (
+                  <>
+                    <Text style={{ color: '#BB86FC', fontSize: 14, fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                    <TextInput style={styles.p2pInput} placeholder="e.g., PRX vs NRG" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1, minWidth: 120 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Side A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="PRX" placeholderTextColor="#666" /></View>
+                      <View style={{ flex: 1, minWidth: 120 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Side B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="NRG" placeholderTextColor="#666" /></View>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Base Unit</Text><TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchBlindBase} onChangeText={setPitchBlindBase} placeholder="100" /></View>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchBlindMultiplier} onChangeText={updatePitchBlindMultiplier}/></View>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#BB86FC', fontSize: 13, fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.p2pInput} keyboardType="number-pad" value={pitchBlindPercent} onChangeText={updatePitchBlindPercent}/></View>
+                    </View>
+                  </>
+                ) : pitchBetType === 'p2p' ? (
+                  <>
+                    <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>The Scenario</Text>
+                    <TextInput style={styles.p2pInput} placeholder="e.g., Will Chris spill his drink?" placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Option A</Text><TextInput style={styles.p2pInput} value={pitchOptionA} onChangeText={setPitchOptionA} placeholder="Yes" placeholderTextColor="#666" /></View>
+                      <View style={{ flex: 1 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Option B</Text><TextInput style={styles.p2pInput} value={pitchOptionB} onChangeText={setPitchOptionB} placeholder="No" placeholderTextColor="#666" /></View>
+                    </View>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 5 }}>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Risk</Text><TextInput style={styles.p2pInput} keyboardType="numeric" value={pitchWager} onChangeText={(text) => setPitchWager(sanitizeNumber(text))} /></View>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Odds (x)</Text><TextInput style={styles.p2pInput} keyboardType="decimal-pad" value={pitchMultiplier} onChangeText={updatePitchP2PMultiplier} /></View>
+                      <View style={{ flex: 1, minWidth: 80 }}><Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>Win (%)</Text><TextInput style={styles.p2pInput} keyboardType="number-pad" value={pitchP2PPercent} onChangeText={updatePitchP2PPercent} /></View>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>The Question</Text>
+                    <TextInput style={styles.p2pInput} placeholder={pitchBetType === 'over_under' ? "e.g., Number of foul calls: 4.5" : "e.g., Who wins the first hand of poker?"} placeholderTextColor="#666" value={pitchQuestion} onChangeText={setPitchQuestion} />
+                    <Text style={{ color: '#00D084', fontSize: 14, fontWeight: 'bold', marginBottom: 5, marginTop: 10 }}>Options & Payouts</Text>
+                    {pitchOptions.map((opt) => (
+                      <View key={opt.id} style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput 
+                          style={[styles.p2pInput, { flex: 3 }]} 
+                          value={opt.label} 
+                          onChangeText={(text) => updatePitchOption(opt.id, 'label', text)} 
+                          editable={pitchBetType !== 'over_under'} 
+                          placeholder="Option Name"
+                        />
+                        <TextInput 
+                          style={[styles.p2pInput, { flex: 1, textAlign: 'center' }]} 
+                          keyboardType="decimal-pad" 
+                          value={opt.odds} 
+                          onChangeText={(text) => updatePitchOption(opt.id, 'odds', text)} 
+                          placeholder="2.0"
+                        />
+                      </View>
+                    ))}
+                    {pitchBetType === 'prop' && <TouchableOpacity style={{ alignItems: 'center', paddingVertical: 10 }} onPress={handleAddPitchOption}><Text style={{ color: '#00D084', fontWeight: 'bold' }}>+ Add Another Option</Text></TouchableOpacity>}
+                  </>
+                )}
+              </ScrollView>
+
+              <TouchableOpacity 
+                style={{ marginTop: 15, borderRadius: 10, paddingVertical: 15, backgroundColor: '#00D084', alignItems: 'center', justifyContent: 'center' }} 
+                onPress={handleSubmitPitch}
+                disabled={isSubmitting}
+              >
+                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>{isSubmitting ? 'PITCHING...' : 'PITCH TO HOST'}</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </Modal>
       </KeyboardAvoidingView>
     </View>
@@ -604,6 +706,7 @@ const styles = StyleSheet.create({
   bottomNavBtnActive: { flex: 1, alignItems: 'center', paddingVertical: 10, borderTopWidth: 3, borderTopColor: '#00D084' },
   bottomNavText: { color: '#fff', fontSize: 10, marginTop: 4 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   betSlipContainer: { backgroundColor: '#1e1e1e', padding: 25, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   modalContent: { backgroundColor: '#1e1e1e', padding: 25, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
