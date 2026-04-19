@@ -34,6 +34,11 @@ export default function CreateGameScreen({ navigation }: any) {
       return Alert.alert("Hold up", "Please fill out the game and event names.");
     }
 
+    const bankroll = parseInt(startingBankroll);
+    if (isNaN(bankroll) || bankroll <= 0) {
+      return Alert.alert("Hold up", "Starting points must be a positive number.");
+    }
+
     setIsLoading(true);
     const newCode = generateRoomCode();
 
@@ -172,9 +177,9 @@ export default function CreateGameScreen({ navigation }: any) {
 
           {/* Create Button */}
           <TouchableOpacity 
-            style={[styles.createButton, (!gameName.trim() || !eventName.trim()) ? styles.buttonDisabled : null]}
+            style={[styles.createButton, isLoading ? styles.buttonDisabled : null]}
             onPress={handleCreateGame}
-            disabled={!gameName.trim() || !eventName.trim() || isLoading}
+            disabled={isLoading}
           >
             <Text style={styles.createButtonText}>
               {isLoading ? 'GENERATING...' : 'GENERATE ROOM CODE'}

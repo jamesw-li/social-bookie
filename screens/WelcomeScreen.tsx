@@ -157,9 +157,9 @@ export default function WelcomeScreen({ navigation }: any) {
                   autoFocus={true} // Pops the keyboard up immediately
                 />
                 <TouchableOpacity 
-                  style={[styles.joinButton, displayName.trim().length > 1 && !isLoading ? styles.joinButtonActive : styles.joinButtonInactive]}
+                  style={[styles.joinButton, displayName.trim().length >= 3 && !isLoading ? styles.joinButtonActive : styles.joinButtonInactive]}
                   onPress={handleJoinAsGuest}
-                  disabled={displayName.trim().length < 2 || isLoading}
+                  disabled={displayName.trim().length < 3 || isLoading}
                 >
                   <Text style={styles.joinButtonText}>{isLoading ? 'JOINING...' : 'JOIN GAME 🟢'}</Text>
                 </TouchableOpacity>

@@ -37,12 +37,19 @@ export default function HostAuthScreen({ route, navigation }: any) {
   }, [timeLeft]);
 
   const handleAuthentication = async () => {
-    if (!email || !password) {
-      Alert.alert("Missing Fields", "Please enter both email and password.");
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
-    if (authMode === 'signUp' && !hostName) {
-      Alert.alert("Missing Fields", "Please enter a Host Name.");
+
+    if (password.length < 6) {
+      Alert.alert("Weak Password", "Password must be at least 6 characters long.");
+      return;
+    }
+
+    if (authMode === 'signUp' && hostName.trim().length < 3) {
+      Alert.alert("Invalid Name", "Host Name must be at least 3 characters long.");
       return;
     }
 

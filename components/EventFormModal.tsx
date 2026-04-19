@@ -61,8 +61,8 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
         setTriggerType(existingEvent.trigger_type || 'manual');
 
         if (existingEvent.start_time) {
-          try {
-            const d = new Date(existingEvent.start_time);
+          const d = new Date(existingEvent.start_time);
+          if (!isNaN(d.getTime())) {
             setDateObj(d);
             
             const yyyy = d.getFullYear();
@@ -73,8 +73,15 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
             const hh = String(d.getHours()).padStart(2, '0');
             const min = String(d.getMinutes()).padStart(2, '0');
             setTimeInput(`${hh}:${min}`);
-          } catch (e) {
-            setDateObj(new Date());
+          } else {
+            // Fallback for invalid date string
+            const now = new Date();
+            setDateObj(now);
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            setDateInput(`${yyyy}-${mm}-${dd}`);
+            setTimeInput("12:00");
           }
         }
       } else {
@@ -264,12 +271,14 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                       onChange={(e: any) => {
                         const val = e.target.value;
                         setDateInput(val);
-                        try {
+                        if (val) {
                           const [y, m, d] = val.split('-').map(Number);
-                          const newD = new Date(dateObj);
-                          newD.setFullYear(y, m - 1, d);
-                          setDateObj(newD);
-                        } catch(err) {}
+                          if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+                            const newD = new Date(dateObj.getTime() || Date.now());
+                            newD.setFullYear(y, m - 1, d);
+                            if (!isNaN(newD.getTime())) setDateObj(newD);
+                          }
+                        }
                       }}
                       style={webInputStyle}
                     />
@@ -289,12 +298,14 @@ export default function EventFormModal({ visible, onClose, existingEvent, campai
                       onChange={(e: any) => {
                         const val = e.target.value;
                         setTimeInput(val);
-                        try {
+                        if (val) {
                           const [h, m] = val.split(':').map(Number);
-                          const newD = new Date(dateObj);
-                          newD.setHours(h, m);
-                          setDateObj(newD);
-                        } catch(err) {}
+                          if (!isNaN(h) && !isNaN(m)) {
+                            const newD = new Date(dateObj.getTime() || Date.now());
+                            newD.setHours(h, m);
+                            if (!isNaN(newD.getTime())) setDateObj(newD);
+                          }
+                        }
                       }}
                       style={webInputStyle}
                     />

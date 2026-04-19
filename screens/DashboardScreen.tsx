@@ -93,8 +93,16 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   const updatePitchP2PPercent = (val: string) => {
     const sanitized = sanitizeNumber(val);
-    setPitchP2PPercent(sanitized);
     const num = parseFloat(sanitized);
+    
+    // Clamp to 100%
+    if (num > 100) {
+      setPitchP2PPercent('100');
+      setPitchMultiplier('1.00');
+      return;
+    }
+
+    setPitchP2PPercent(sanitized);
     if (num > 0 && num <= 100) setPitchMultiplier((100 / num).toFixed(2));
   };
 
@@ -121,8 +129,16 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   const updatePitchBlindPercent = (val: string) => {
     const sanitized = sanitizeNumber(val);
-    setPitchBlindPercent(sanitized);
     const num = parseFloat(sanitized);
+
+    // Clamp to 100%
+    if (num > 100) {
+      setPitchBlindPercent('100');
+      setPitchBlindMultiplier('1.00');
+      return;
+    }
+
+    setPitchBlindPercent(sanitized);
     if (num > 0 && num <= 100) setPitchBlindMultiplier((100 / num).toFixed(2));
   };
 
@@ -379,7 +395,9 @@ export default function DashboardScreen({ route, navigation }: any) {
   };
 
   async function handleSubmitPitch() {
-    if (!pitchQuestion.trim()) return;
+    if (!pitchQuestion.trim()) {
+      return Alert.alert("Missing Question", "Please enter a question or scenario for your pitch.");
+    }
     setIsSubmitting(true);
     try {
       if (pitchBetType === 'prop' || pitchBetType === 'over_under') {
@@ -582,7 +600,70 @@ export default function DashboardScreen({ route, navigation }: any) {
         </Modal>
 
         <Modal visible={modalVisible} transparent={true} animationType="slide">
-          <View style={styles.modalOverlay}><View style={styles.betSlipContainer}><Text style={styles.slipTitle}>Bet Slip</Text><TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeSlipText}>Cancel</Text></TouchableOpacity></View></View>
+          <View style={styles.modalOverlay}>
+            <View style={styles.betSlipContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.slipTitle}>Bet Slip</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Text style={styles.closeSlipText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+
+              {selectedBet && (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={{ color: '#aaa', fontSize: 12, marginBottom: 4 }}>QUESTION</Text>
+                  <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 }}>{selectedBet.question}</Text>
+                  
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#121212', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#333' }}>
+                    <View>
+                      <Text style={{ color: '#00D084', fontSize: 10, fontWeight: 'bold' }}>SELECTED OPTION</Text>
+                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{selectedOption?.label}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#00D084', fontSize: 20, fontWeight: '900' }}>{selectedOption?.multiplier}x</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              <View style={{ marginBottom: 25 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ color: '#aaa', fontSize: 12 }}>WAGER AMOUNT</Text>
+                  <Text style={{ color: '#00D084', fontSize: 12 }}>Balance: {walletBalance.toLocaleString()}</Text>
+                </View>
+                <TextInput
+                  style={[styles.specInput, { fontSize: 24, paddingVertical: 15, textAlign: 'center' }]}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor="#444"
+                  value={wagerAmount}
+                  onChangeText={(text) => setWagerAmount(sanitizeNumber(text))}
+                  autoFocus={true}
+                />
+              </View>
+
+              {parseInt(wagerAmount) > 0 && (
+                <View style={{ backgroundColor: 'rgba(0, 208, 132, 0.1)', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(0, 208, 132, 0.3)' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 14 }}>Potential Payout</Text>
+                    <Text style={{ color: '#00D084', fontSize: 18, fontWeight: 'bold' }}>
+                      {(parseInt(wagerAmount) * (selectedOption?.multiplier || 0)).toLocaleString()} pts
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <TouchableOpacity 
+                style={[styles.specSubmitBtn, (parseInt(wagerAmount) <= 0 || parseInt(wagerAmount) > walletBalance || isSubmitting) && { opacity: 0.5 }]} 
+                onPress={submitWager}
+                disabled={parseInt(wagerAmount) <= 0 || parseInt(wagerAmount) > walletBalance || isSubmitting}
+              >
+                <Text style={styles.specSubmitBtnText}>
+                  {isSubmitting ? 'PLACING BET...' : parseInt(wagerAmount) > walletBalance ? 'INSUFFICIENT FUNDS' : 'CONFIRM BET'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
         <Modal visible={suggestModalVisible} transparent={true} animationType="slide">
