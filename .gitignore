@@ -3,6 +3,9 @@
 # dependencies
 node_modules/
 
+# Local portable Node/npm trees (never commit; see AGENTS.md)
+.tools/
+
 # Expo
 .expo/
 dist/
